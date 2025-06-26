@@ -1,90 +1,96 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<title>Legal Acts Portal</title>
-<style>
-  body { max-width: 600px; margin: 20px auto; font-family: Arial, sans-serif; }
-  input, select, button, textarea { width: 100%; padding: 8px; margin: 5px 0; }
-  .hidden { display: none; }
-  .doc { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-  .admin-buttons button { margin-right: 5px; }
-  #logs { max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ccc; }
-</style>
+  <meta charset="UTF-8" />
+  <title>Legal Acts Portal - Правительство</title>
+  <style>
+    body { max-width: 700px; margin: 20px auto; font-family: Arial, sans-serif; }
+    h2 { margin-top: 30px; }
+    input, select, textarea, button { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
+    .hidden { display: none; }
+    .doc { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    .admin-buttons button { margin-right: 5px; }
+    .log-entry { font-size: 12px; border-bottom: 1px solid #ddd; padding: 3px 0; }
+  </style>
 </head>
 <body>
 
-<h1>Legal Acts Portal</h1>
+  <h1>Legal Acts Portal</h1>
 
-<div id="loginSection">
-  <h2>Вход</h2>
-  <input type="text" id="loginInput" placeholder="Логин" />
-  <input type="password" id="passwordInput" placeholder="Пароль" />
-  <button id="loginBtn">Войти</button>
-</div>
+  <!-- Вход -->
+  <div id="loginSection">
+    <h2>Вход в систему</h2>
+    <label>Логин:</label>
+    <input type="text" id="loginInput" placeholder="Введите логин" />
+    <label>Пароль:</label>
+    <input type="password" id="passwordInput" placeholder="Введите пароль" />
+    <button id="loginBtn">Войти</button>
+  </div>
 
-<div id="welcomeSection" class="hidden">
-  <p id="welcomeText"></p>
-  <button id="logoutBtn">Выйти</button>
-</div>
+  <!-- После входа -->
+  <div id="mainSection" class="hidden">
+    <div>
+      <b>Добро пожаловать! Вы вошли как: <span id="userName"></span> (<span id="userRole"></span>)</b>
+      <button id="logoutBtn" style="float:right;">Выйти</button>
+    </div>
 
-<div id="createDocSection" class="hidden">
-  <h2>Регистрация акта</h2>
-  <input type="text" id="fioInput" placeholder="ФИО (3 слова)" />
-  <input type="text" id="departmentInput" placeholder="Отдел" />
-  <select id="docTypeSelect">
-    <option value="Указ">Указ</option>
-    <option value="Постановление">Постановление</option>
-  </select>
-  <input type="text" id="docNameInput" placeholder="Название документа" />
-  <textarea id="docDescInput" placeholder="Описание (необязательно)"></textarea>
-  <input type="file" id="fileInput" />
-  <button id="uploadBtn">Загрузить документ</button>
-  <p id="uploadStatus"></p>
-</div>
+    <!-- Создание документа (только для Правительства РФ и Президента) -->
+    <div id="createDocSection" class="hidden">
+      <h2>Регистрация Акта</h2>
+      <label>ФИО:</label>
+      <input type="text" id="fioInput" placeholder="Фамилия Имя Отчество" />
+      <label>Отдел:</label>
+      <input type="text" id="departmentInput" placeholder="Отдел" />
+      <label>Вид документа:</label>
+      <select id="docTypeSelect">
+        <option value="Указ">Указ</option>
+        <option value="Постановление">Постановление</option>
+      </select>
+      <label>Название документа:</label>
+      <input type="text" id="docNameInput" placeholder="Название документа" />
+      <label>Описание (не обязательно):</label>
+      <textarea id="docDescInput" rows="3" placeholder="Описание документа"></textarea>
+      <label>Файл:</label>
+      <input type="file" id="fileInput" />
+      <button id="uploadDocBtn">Загрузить документ</button>
+      <p id="uploadCode"></p>
+    </div>
 
-<div id="docsSection" class="hidden">
-  <h2>Документы</h2>
-  <div id="docsList"></div>
-</div>
+    <!-- Список документов -->
+    <div id="docsSection">
+      <h2>Документы</h2>
+      <div id="docsList"></div>
+    </div>
 
-<div id="logsSection" class="hidden">
-  <h2>Логи</h2>
-  <div id="logs"></div>
-</div>
+    <!-- Логи (только для Минюста и Президента) -->
+    <div id="logsSection" class="hidden">
+      <h2>Логи действий</h2>
+      <div id="logsList"></div>
+    </div>
+  </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-  import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-  import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
-    authDomain: "legal-acts-portal.firebaseapp.com",
-    projectId: "legal-acts-portal",
-    storageBucket: "legal-acts-portal.appspot.com",
-    messagingSenderId: "969951897920",
-    appId: "1:969951897920:web:3e35b87565cfcc9e0832a5"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const storage = getStorage(app);
-
-  // Жестко заданные аккаунты с ролями и именами
+<script>
+  // Жёстко заданные аккаунты
   const ACCOUNTS = {
-    "kirill12633": { password: "12345", role: "creator", name: "Kirill" },
-    "minjust": { password: "5864", role: "minjust", name: "Министерство Юстиции" },
-    "president": { password: "5648", role: "president", name: "Президент РФ" }
+    "gov-rf": { password: "1234", role: "creator", name: "Правительство РФ" },
+    "minjust": { password: "5678", role: "minjust", name: "Министерство Юстиции" },
+    "president": { password: "abcd", role: "president", name: "Президент РФ" },
   };
 
+  // Массив документов (хранится в памяти)
+  const documents = [];
+
+  // Массив логов
+  const logs = [];
+
+  // Текущий пользователь
   let currentUser = null;
 
   // Элементы DOM
   const loginSection = document.getElementById('loginSection');
-  const welcomeSection = document.getElementById('welcomeSection');
-  const welcomeText = document.getElementById('welcomeText');
+  const mainSection = document.getElementById('mainSection');
+  const userNameSpan = document.getElementById('userName');
+  const userRoleSpan = document.getElementById('userRole');
   const logoutBtn = document.getElementById('logoutBtn');
 
   const createDocSection = document.getElementById('createDocSection');
@@ -94,29 +100,15 @@
   const docNameInput = document.getElementById('docNameInput');
   const docDescInput = document.getElementById('docDescInput');
   const fileInput = document.getElementById('fileInput');
-  const uploadBtn = document.getElementById('uploadBtn');
-  const uploadStatus = document.getElementById('uploadStatus');
+  const uploadDocBtn = document.getElementById('uploadDocBtn');
+  const uploadCode = document.getElementById('uploadCode');
 
-  const docsSection = document.getElementById('docsSection');
   const docsList = document.getElementById('docsList');
 
   const logsSection = document.getElementById('logsSection');
-  const logsDiv = document.getElementById('logs');
+  const logsList = document.getElementById('logsList');
 
-  // Логирование действий
-  async function logAction(action, docId = null) {
-    const logEntry = {
-      user: currentUser.name,
-      role: currentUser.role,
-      action,
-      docId,
-      timestamp: new Date()
-    };
-    await addDoc(collection(db, 'logs'), logEntry);
-    if (currentUser.role === 'president') loadLogs();
-  }
-
-  // Вход
+  // Логин
   document.getElementById('loginBtn').onclick = () => {
     const login = document.getElementById('loginInput').value.trim();
     const password = document.getElementById('passwordInput').value.trim();
@@ -129,60 +121,66 @@
       alert('Неверный пароль');
       return;
     }
+
     currentUser = { login, ...ACCOUNTS[login] };
-    onUserLoggedIn();
+    loginSection.classList.add('hidden');
+    mainSection.classList.remove('hidden');
+
+    userNameSpan.textContent = currentUser.name;
+    userRoleSpan.textContent = currentUser.role;
+
+    uploadCode.textContent = "";
+    fioInput.value = "";
+    departmentInput.value = "";
+    docNameInput.value = "";
+    docDescInput.value = "";
+    fileInput.value = "";
+
+    setupUIForRole();
+    renderDocuments();
+    renderLogs();
   };
 
-  // Выход
   logoutBtn.onclick = () => {
     currentUser = null;
-    onUserLoggedOut();
+    loginSection.classList.remove('hidden');
+    mainSection.classList.add('hidden');
   };
 
-  function onUserLoggedIn() {
-    loginSection.classList.add('hidden');
-    welcomeSection.classList.remove('hidden');
-    docsSection.classList.remove('hidden');
-    welcomeText.textContent = `Добро пожаловать, вы вошли как ${currentUser.name} (${currentUser.role})`;
+  // Настройка UI по роли
+  function setupUIForRole() {
+    // Создатель (Правительство РФ) и Президент могут создавать документы
+    if (currentUser.role === 'creator' || currentUser.role === 'president') {
+      createDocSection.classList.remove('hidden');
+    } else {
+      createDocSection.classList.add('hidden');
+    }
 
-    // Показать секцию создания документа только создателю
-    createDocSection.classList.toggle('hidden', currentUser.role !== 'creator');
-
-    // Логи доступны только президенту
-    logsSection.classList.toggle('hidden', currentUser.role !== 'president');
-
-    loadDocuments();
-    if (currentUser.role === 'president') loadLogs();
-  }
-
-  function onUserLoggedOut() {
-    loginSection.classList.remove('hidden');
-    welcomeSection.classList.add('hidden');
-    createDocSection.classList.add('hidden');
-    docsSection.classList.add('hidden');
-    logsSection.classList.add('hidden');
-    docsList.innerHTML = '';
-    logsDiv.innerHTML = '';
-    // Очистка полей
-    fioInput.value = '';
-    departmentInput.value = '';
-    docNameInput.value = '';
-    docDescInput.value = '';
-    fileInput.value = '';
+    // Минюст и Президент видят логи
+    if (currentUser.role === 'minjust' || currentUser.role === 'president') {
+      logsSection.classList.remove('hidden');
+    } else {
+      logsSection.classList.add('hidden');
+    }
   }
 
   // Загрузка документа
-  uploadBtn.onclick = async () => {
+  uploadDocBtn.onclick = () => {
     const fio = fioInput.value.trim();
+    const department = departmentInput.value.trim();
+    const docType = docTypeSelect.value;
+    const docName = docNameInput.value.trim();
+    const docDesc = docDescInput.value.trim();
+
     if (fio.split(' ').length !== 3) {
       alert('ФИО должно содержать 3 слова');
       return;
     }
-    if (!departmentInput.value.trim()) {
+    if (!department) {
       alert('Введите отдел');
       return;
     }
-    if (!docNameInput.value.trim()) {
+    if (!docName) {
       alert('Введите название документа');
       return;
     }
@@ -192,134 +190,167 @@
     }
 
     const file = fileInput.files[0];
-    const docType = docTypeSelect.value;
+    const docId = 'DOC-' + Math.floor(Math.random() * 100000);
 
-    uploadStatus.textContent = 'Загрузка...';
+    // Создаем "спецкод" для документа
+    const specialCode = `${docName} №${docId}`;
 
-    try {
-      const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const fileURL = await getDownloadURL(storageRef);
+    // Добавляем документ в память
+    documents.push({
+      id: docId,
+      fio,
+      department,
+      docType,
+      docName,
+      docDesc,
+      fileName: file.name,
+      fileURL: URL.createObjectURL(file), // для простоты создаем URL из файла
+      status: 'Ожидает одобрения',
+      createdBy: currentUser.login,
+      decisionBy: null,
+      decisionDate: null,
+      specialCode,
+    });
 
-      // Создаем уникальный код документа, например дата + рандом 4 цифры
-      const docNumber = `№${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 9000 + 1000)}`;
+    // Логируем создание
+    logs.push({
+      timestamp: new Date(),
+      user: currentUser.name,
+      action: `Создан документ ${docName} (${docId})`,
+    });
 
-      // Сохраняем в Firestore
-      await addDoc(collection(db, 'documents'), {
-        fio,
-        department: departmentInput.value.trim(),
-        docType,
-        docName: docNameInput.value.trim(),
-        docDesc: docDescInput.value.trim(),
-        fileName: file.name,
-        fileURL,
-        docNumber,
-        status: "Ждет одобрения",
-        createdBy: currentUser.login,
-        createdByName: currentUser.name,
-        createdAt: new Date()
-      });
+    alert(`Документ зарегистрирован!\nКод для указа: ${specialCode}`);
 
-      await logAction(`Создан документ ${docNameInput.value.trim()} (${docNumber})`);
+    // Очистка формы
+    fioInput.value = '';
+    departmentInput.value = '';
+    docNameInput.value = '';
+    docDescInput.value = '';
+    fileInput.value = '';
+    uploadCode.textContent = '';
 
-      uploadStatus.textContent = 'Документ успешно загружен!';
-      fioInput.value = '';
-      departmentInput.value = '';
-      docNameInput.value = '';
-      docDescInput.value = '';
-      fileInput.value = '';
-
-      loadDocuments();
-
-    } catch (e) {
-      uploadStatus.textContent = 'Ошибка загрузки: ' + e.message;
-    }
+    renderDocuments();
+    renderLogs();
   };
 
-  // Загрузка и отображение документов
-  async function loadDocuments() {
+  // Отрисовка документов
+  function renderDocuments() {
     docsList.innerHTML = '';
 
-    const q = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
+    if (documents.length === 0) {
+      docsList.textContent = 'Документов нет.';
+      return;
+    }
 
-    snapshot.forEach(docSnap => {
-      const docData = docSnap.data();
+    documents.forEach(doc => {
       const div = document.createElement('div');
       div.className = 'doc';
 
       div.innerHTML = `
-        <b>${docData.docType} - ${docData.docName}</b> ${docData.docNumber} <br/>
-        ФИО: ${docData.fio} <br/>
-        Отдел: ${docData.department} <br/>
-        Статус: ${docData.status} <br/>
-        Создано: ${docData.createdByName} <br/>
-        <a href="${docData.fileURL}" target="_blank">Открыть документ</a>
+        <b>${doc.docType}:</b> ${doc.docName} <br/>
+        <b>ФИО:</b> ${doc.fio} <br/>
+        <b>Отдел:</b> ${doc.department} <br/>
+        <b>Описание:</b> ${doc.docDesc || '-'} <br/>
+        <b>Файл:</b> <a href="${doc.fileURL}" target="_blank">${doc.fileName}</a> <br/>
+        <b>Статус:</b> ${doc.status} <br/>
+        <b>Код документа:</b> ${doc.specialCode} <br/>
+        <b>Создал:</b> ${ACCOUNTS[doc.createdBy]?.name || doc.createdBy} <br/>
+        ${doc.decisionBy ? `<b>Решение:</b> ${doc.status} пользователем ${doc.decisionBy} (${new Date(doc.decisionDate).toLocaleString()})` : ''}
       `;
 
-      // Кнопки для минюста и президента
-      if (["minjust", "president"].includes(currentUser.role)) {
-        const adminButtons = document.createElement('div');
-        adminButtons.className = 'admin-buttons';
+      // Кнопки для ролей
 
-        // Одобрить
-        const approveBtn = document.createElement('button');
-        approveBtn.textContent = 'Одобрить';
-        approveBtn.onclick = async () => {
-          await updateStatus(docSnap.id, 'Одобрен');
-          await logAction(`Одобрил документ ${docData.docName} (${docData.docNumber})`, docSnap.id);
-        };
+      // Правительство РФ - только создание, кнопок нет
+      if (currentUser.role === 'creator') {
+        // нет кнопок
+      }
 
-        // Отклонить
-        const rejectBtn = document.createElement('button');
-        rejectBtn.textContent = 'Отклонить';
-        rejectBtn.onclick = async () => {
-          await updateStatus(docSnap.id, 'Отклонен');
-          await logAction(`Отклонил документ ${docData.docName} (${docData.docNumber})`, docSnap.id);
-        };
+      // Минюст - может одобрять, отклонять, удалять
+      if (currentUser.role === 'minjust') {
+        const btnApprove = document.createElement('button');
+        btnApprove.textContent = 'Одобрить';
+        btnApprove.onclick = () => updateDocStatus(doc.id, 'Одобрен');
+        const btnReject = document.createElement('button');
+        btnReject.textContent = 'Отклонить';
+        btnReject.onclick = () => updateDocStatus(doc.id, 'Отклонён');
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Удалить';
+        btnDelete.onclick = () => deleteDocument(doc.id);
+        const btnsDiv = document.createElement('div');
+        btnsDiv.className = 'admin-buttons';
+        btnsDiv.append(btnApprove, btnReject, btnDelete);
+        div.appendChild(btnsDiv);
+      }
 
-        adminButtons.appendChild(approveBtn);
-        adminButtons.appendChild(rejectBtn);
-
-        // Удалять может только президент
-        if (currentUser.role === 'president') {
-          const deleteBtn = document.createElement('button');
-          deleteBtn.textContent = 'Удалить';
-          deleteBtn.onclick = async () => {
-            if (confirm('Удалить документ?')) {
-              await deleteDoc(doc(db, 'documents', docSnap.id));
-              await logAction(`Удалил документ ${docData.docName} (${docData.docNumber})`, docSnap.id);
-              loadDocuments();
-            }
-          };
-          adminButtons.appendChild(deleteBtn);
-        }
-
-        div.appendChild(adminButtons);
+      // Президент - полный доступ
+      if (currentUser.role === 'president') {
+        const btnApprove = document.createElement('button');
+        btnApprove.textContent = 'Одобрить';
+        btnApprove.onclick = () => updateDocStatus(doc.id, 'Одобрен');
+        const btnReject = document.createElement('button');
+        btnReject.textContent = 'Отклонить';
+        btnReject.onclick = () => updateDocStatus(doc.id, 'Отклонён');
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Удалить';
+        btnDelete.onclick = () => deleteDocument(doc.id);
+        const btnsDiv = document.createElement('div');
+        btnsDiv.className = 'admin-buttons';
+        btnsDiv.append(btnApprove, btnReject, btnDelete);
+        div.appendChild(btnsDiv);
       }
 
       docsList.appendChild(div);
     });
   }
 
-  async function updateStatus(docId, newStatus) {
-    const docRef = doc(db, 'documents', docId);
-    await updateDoc(docRef, { status: newStatus });
-    loadDocuments();
+  // Обновление статуса документа (одобрить / отклонить)
+  function updateDocStatus(docId, newStatus) {
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
+    doc.status = newStatus;
+    doc.decisionBy = currentUser.name;
+    doc.decisionDate = new Date();
+
+    logs.push({
+      timestamp: new Date(),
+      user: currentUser.name,
+      action: `Документ ${doc.docName} (${doc.id}) - статус изменён на "${newStatus}"`,
+    });
+
+    renderDocuments();
+    renderLogs();
   }
 
-  // Загрузка логов (для президента)
-  async function loadLogs() {
-    logsDiv.innerHTML = '';
-    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'));
-    const snapshot = await getDocs(q);
+  // Удаление документа
+  function deleteDocument(docId) {
+    const docIndex = documents.findIndex(d => d.id === docId);
+    if (docIndex === -1) return;
 
-    snapshot.forEach(docSnap => {
-      const log = docSnap.data();
-      const timeStr = new Date(log.timestamp.seconds * 1000).toLocaleString();
+    logs.push({
+      timestamp: new Date(),
+      user: currentUser.name,
+      action: `Документ ${documents[docIndex].docName} (${docId}) удалён`,
+    });
+
+    documents.splice(docIndex, 1);
+    renderDocuments();
+    renderLogs();
+  }
+
+  // Отрисовка логов
+  function renderLogs() {
+    logsList.innerHTML = '';
+    if (logs.length === 0) {
+      logsList.textContent = 'Логи пусты.';
+      return;
+    }
+
+    logs.forEach(log => {
       const div = document.createElement('div');
-      div.textContent = `[${timeStr}] ${log.user} (${log.role}): ${log.action}`;
-      logsDiv.appendChild(div);
+      div.className = 'log-entry';
+      div.textContent = `[${new Date(log.timestamp).toLocaleString()}] ${log.user}: ${log.action}`;
+      logsList.appendChild(div);
     });
   }
 
