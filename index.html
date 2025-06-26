@@ -1,49 +1,36 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Legal Acts Portal</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    body {
-      max-width: 700px;
-      margin: 30px auto;
-      font-family: Arial, sans-serif;
-    }
-    input, button, select {
-      padding: 8px;
-      margin: 6px 0;
-      width: 100%;
-    }
-    .doc {
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-    .admin-buttons button {
-      margin-right: 5px;
-    }
+    body { max-width: 600px; margin: 20px auto; font-family: Arial; }
+    input, button, select { padding: 8px; margin: 5px 0; width: 100%; }
+    #docs { margin-top: 20px; }
+    .doc { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    .admin-buttons button { margin-right: 5px; }
   </style>
 </head>
 <body>
-  <h1>Портал правовых актов</h1>
 
-  <div>
-    <input type="text" id="email" placeholder="Логин">
-    <input type="password" id="password" placeholder="Пароль">
-    <button id="loginBtn">Войти</button>
-    <button id="logoutBtn" style="display:none;">Выйти</button>
-    <p id="userInfo"></p>
-  </div>
+  <h2>Вход</h2>
+  <input type="text" id="email" placeholder="Логин (например, 12345-12345)" />
+  <input type="password" id="password" placeholder="Пароль" />
+  <button id="loginBtn">Войти</button>
+  <button id="logoutBtn" style="display:none;">Выйти</button>
+
+  <div id="userInfo"></div>
 
   <div id="uploadSection" style="display:none;">
-    <input type="text" id="fio" placeholder="ФИО (например: Иванов Иван Иванович)">
+    <h3>Загрузка документа</h3>
+    <input type="text" id="fio" placeholder="ФИО (3 слова)" />
     <select id="docType">
-      <option value="Указ">Указ</option>
       <option value="Постановление">Постановление</option>
+      <option value="Указ">Указ</option>
     </select>
-    <input type="text" id="department" placeholder="Отдел">
-    <input type="file" id="fileInput">
+    <input type="text" id="department" placeholder="Отдел" />
+    <input type="file" id="fileInput" />
     <button id="uploadBtn">Загрузить документ</button>
   </div>
 
@@ -51,8 +38,9 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, query, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, query, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
@@ -64,14 +52,17 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
 
+    // ======= Жестко заданные аккаунты с ролями, логинами и паролями =======
     const ACCOUNTS = {
-      "gov-rf-001": { password: "createonly", role: "government", name: "Правительство РФ" },
-      "minjust-001": { password: "approveview", role: "minjust", name: "Минюст" },
-      "president-001": { password: "superadmin", role: "president", name: "Президент РФ" }
+      "12345-12345": { password: "5864", role: "minjust", name: "Министерство Юстиции" },  // Минюст - может одобрять, удалять, смотреть логи
+      "5678-2345": { password: "5648", role: "president", name: "Президент РФ" },           // Президент - полный доступ
+      "9999-9999": { password: "9999", role: "government", name: "Правительство РФ" }      // Правительство РФ - только создавать документы, нельзя одобрять/удалять
     };
+    // =====================================================================
 
     let currentUser = null;
 
@@ -114,7 +105,7 @@
       logoutBtn.style.display = 'block';
       emailInput.style.display = 'none';
       passwordInput.style.display = 'none';
-      uploadSection.style.display = currentUser.role !== 'minjust' ? 'block' : 'none';
+      uploadSection.style.display = 'block';
       loadDocuments();
     }
 
@@ -129,89 +120,125 @@
     }
 
     uploadBtn.onclick = async () => {
-      const fio = fioInput.value.trim();
-      if (fio.split(' ').length !== 3 || !fileInput.files.length) {
-        alert('Проверьте ФИО и выберите файл');
+      if (!currentUser) {
+        alert('Сначала войдите в систему');
         return;
       }
-      const file = fileInput.files[0];
-      const filePath = `documents/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, filePath);
-      try {
-        await uploadBytes(storageRef, file);
-        const fileURL = await getDownloadURL(storageRef);
-        await addDoc(collection(db, 'documents'), {
-          fio, docType: docTypeSelect.value, department: departmentInput.value.trim(),
-          fileName: file.name, fileURL, filePath,
-          status: "Сканируется", decisionBy: null, decisionDate: null,
-          createdBy: currentUser.login, createdAt: new Date()
-        });
-        alert('Документ загружен');
-        fioInput.value = ''; departmentInput.value = ''; fileInput.value = '';
-        loadDocuments();
-      } catch (e) {
-        alert('Ошибка загрузки: ' + e.message);
+
+      // Правительство РФ может только создавать, не одобрять и не удалять
+      if (currentUser.role === 'government' || currentUser.role === 'minjust' || currentUser.role === 'president') {
+        const fio = fioInput.value.trim();
+        if (fio.split(' ').length !== 3) {
+          alert('ФИО должно содержать 3 слова');
+          return;
+        }
+        if (!fileInput.files.length) {
+          alert('Выберите файл');
+          return;
+        }
+        const file = fileInput.files[0];
+        try {
+          const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+          await uploadBytes(storageRef, file);
+          const fileURL = await getDownloadURL(storageRef);
+
+          await addDoc(collection(db, 'documents'), {
+            fio,
+            docType: docTypeSelect.value,
+            department: departmentInput.value.trim(),
+            fileName: file.name,
+            fileURL,
+            status: "Сканируется",
+            decisionBy: null,
+            decisionDate: null,
+            createdBy: currentUser.login,
+            createdAt: new Date()
+          });
+          alert('Документ загружен');
+          fioInput.value = '';
+          departmentInput.value = '';
+          fileInput.value = '';
+          loadDocuments();
+        } catch(e) {
+          alert('Ошибка загрузки: ' + e.message);
+        }
+      } else {
+        alert('У вас нет прав для загрузки документов');
       }
     };
 
     async function loadDocuments() {
-      docsDiv.innerHTML = '<h2>Документы</h2>';
+      docsDiv.innerHTML = '<h3>Документы</h3>';
       const q = query(collection(db, 'documents'));
       const snapshot = await getDocs(q);
+
       snapshot.forEach(docSnap => {
         const docData = docSnap.data();
         const div = document.createElement('div');
         div.className = 'doc';
         div.innerHTML = `
-          <strong>${docData.docType}</strong><br>
+          <b>${docData.docType}</b><br>
           ФИО: ${docData.fio}<br>
           Отдел: ${docData.department}<br>
           Статус: ${docData.status}<br>
-          Принято: ${docData.decisionBy || '–'} ${docData.decisionDate ? new Date(docData.decisionDate.seconds * 1000).toLocaleString() : ''}<br>
-          <a href="${docData.fileURL}" target="_blank">Открыть файл</a><br>
+          Принято: ${docData.decisionBy ? docData.decisionBy : '–'} ${docData.decisionDate ? new Date(docData.decisionDate.seconds * 1000).toLocaleString() : ''}<br>
+          <a href="${docData.fileURL}" target="_blank">Открыть файл</a>
           <div id="qrcode-${docSnap.id}"></div>
         `;
 
+        // Кнопки для одобрения и удаления — доступны Минюсту и Президенту
         if (["minjust", "president"].includes(currentUser.role)) {
           const adminButtons = document.createElement('div');
           adminButtons.className = 'admin-buttons';
+
           const approveBtn = document.createElement('button');
           approveBtn.textContent = 'Одобрить';
           approveBtn.onclick = () => updateStatus(docSnap.id, 'Одобрен');
+
           const rejectBtn = document.createElement('button');
           rejectBtn.textContent = 'Отклонить';
           rejectBtn.onclick = () => updateStatus(docSnap.id, 'Не одобрен');
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Удалить';
+          deleteBtn.onclick = () => deleteDocument(docSnap.id);
+
           adminButtons.appendChild(approveBtn);
           adminButtons.appendChild(rejectBtn);
+          adminButtons.appendChild(deleteBtn);
 
-          if (currentUser.role === "president" || currentUser.role === "minjust") {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.textContent = 'Удалить';
-            deleteBtn.onclick = () => deleteDocument(docSnap.id, docData.filePath);
-            adminButtons.appendChild(deleteBtn);
-          }
           div.appendChild(adminButtons);
         }
 
         docsDiv.appendChild(div);
-        new QRCode(document.getElementById(`qrcode-${docSnap.id}`), { text: docData.fileURL, width: 100, height: 100 });
+        new QRCode(document.getElementById(`qrcode-${docSnap.id}`), {
+          text: docData.fileURL,
+          width: 128,
+          height: 128
+        });
       });
     }
 
     async function updateStatus(docId, newStatus) {
       const docRef = doc(db, 'documents', docId);
-      await updateDoc(docRef, { status: newStatus, decisionBy: currentUser.name, decisionDate: new Date() });
+      await updateDoc(docRef, {
+        status: newStatus,
+        decisionBy: currentUser.name,
+        decisionDate: new Date()
+      });
       loadDocuments();
     }
 
-    async function deleteDocument(docId, path) {
-      await deleteDoc(doc(db, 'documents', docId));
-      const fileRef = ref(storage, path);
-      await deleteObject(fileRef);
+    async function deleteDocument(docId) {
+      if (!confirm('Вы уверены, что хотите удалить этот документ?')) return;
+      const docRef = doc(db, 'documents', docId);
+      await updateDoc(docRef, { status: 'Удалён' });
       loadDocuments();
     }
 
     onUserLoggedOut();
+
   </script>
+
 </body>
 </html>
