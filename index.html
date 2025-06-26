@@ -1,360 +1,180 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <title>Legal Acts Portal - Правительство</title>
-  <style>
-    body { max-width: 700px; margin: 20px auto; font-family: Arial, sans-serif; }
-    h2 { margin-top: 30px; }
-    input, select, textarea, button { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
-    .hidden { display: none; }
-    .doc { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-    .admin-buttons button { margin-right: 5px; }
-    .log-entry { font-size: 12px; border-bottom: 1px solid #ddd; padding: 3px 0; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Портал регистрации актов</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 700px;
+    margin: 30px auto;
+    padding: 10px;
+  }
+  #loginForm, #docsSection {
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+  input, button, select {
+    padding: 8px;
+    margin-top: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .doc {
+    border: 1px solid #888;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 6px;
+  }
+  .doc h3 {
+    margin: 0 0 8px 0;
+  }
+  .qr-code {
+    margin-top: 8px;
+  }
+  #logoutBtn {
+    background-color: #cc3333;
+    color: white;
+    border: none;
+    margin-top: 15px;
+    cursor: pointer;
+  }
+  #loginBtn {
+    background-color: #2a8;
+    color: white;
+    border: none;
+    cursor: pointer;
+  }
+  #status {
+    margin-top: 10px;
+    color: red;
+  }
+</style>
 </head>
 <body>
 
-  <h1>Legal Acts Portal</h1>
+<h1>Портал регистрации актов</h1>
 
-  <!-- Вход -->
-  <div id="loginSection">
-    <h2>Вход в систему</h2>
-    <label>Логин:</label>
-    <input type="text" id="loginInput" placeholder="Введите логин" />
-    <label>Пароль:</label>
-    <input type="password" id="passwordInput" placeholder="Введите пароль" />
-    <button id="loginBtn">Войти</button>
-  </div>
+<div id="loginForm">
+  <h2>Вход</h2>
+  <input type="text" id="loginInput" placeholder="Логин" />
+  <input type="password" id="passwordInput" placeholder="Пароль" />
+  <button id="loginBtn">Войти</button>
+  <div id="status"></div>
+</div>
 
-  <!-- После входа -->
-  <div id="mainSection" class="hidden">
-    <div>
-      <b>Добро пожаловать! Вы вошли как: <span id="userName"></span> (<span id="userRole"></span>)</b>
-      <button id="logoutBtn" style="float:right;">Выйти</button>
-    </div>
+<div id="docsSection" style="display:none;">
+  <h2>Добро пожаловать, <span id="userName"></span></h2>
+  <button id="logoutBtn">Выйти</button>
 
-    <!-- Создание документа (только для Правительства РФ и Президента) -->
-    <div id="createDocSection" class="hidden">
-      <h2>Регистрация Акта</h2>
-      <label>ФИО:</label>
-      <input type="text" id="fioInput" placeholder="Фамилия Имя Отчество" />
-      <label>Отдел:</label>
-      <input type="text" id="departmentInput" placeholder="Отдел" />
-      <label>Вид документа:</label>
-      <select id="docTypeSelect">
-        <option value="Указ">Указ</option>
-        <option value="Постановление">Постановление</option>
-      </select>
-      <label>Название документа:</label>
-      <input type="text" id="docNameInput" placeholder="Название документа" />
-      <label>Описание (не обязательно):</label>
-      <textarea id="docDescInput" rows="3" placeholder="Описание документа"></textarea>
-      <label>Файл:</label>
-      <input type="file" id="fileInput" />
-      <button id="uploadDocBtn">Загрузить документ</button>
-      <p id="uploadCode"></p>
-    </div>
+  <h3>Документы</h3>
+  <div id="docsList"></div>
+</div>
 
-    <!-- Список документов -->
-    <div id="docsSection">
-      <h2>Документы</h2>
-      <div id="docsList"></div>
-    </div>
-
-    <!-- Логи (только для Минюста и Президента) -->
-    <div id="logsSection" class="hidden">
-      <h2>Логи действий</h2>
-      <div id="logsList"></div>
-    </div>
-  </div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-  // Жёстко заданные аккаунты
+  // Простые аккаунты
   const ACCOUNTS = {
-    "gov-rf": { password: "1234", role: "creator", name: "Правительство РФ" },
-    "minjust": { password: "5678", role: "minjust", name: "Министерство Юстиции" },
-    "president": { password: "abcd", role: "president", name: "Президент РФ" },
+    "pravitelstvo": { password: "123", role: "creator", name: "Правительство РФ" },
+    "minjust": { password: "456", role: "minjust", name: "Министерство Юстиции" },
+    "prezident": { password: "789", role: "president", name: "Президент РФ" },
   };
 
-  // Массив документов (хранится в памяти)
-  const documents = [];
-
-  // Массив логов
-  const logs = [];
-
-  // Текущий пользователь
+  // Храним текущего пользователя
   let currentUser = null;
 
-  // Элементы DOM
-  const loginSection = document.getElementById('loginSection');
-  const mainSection = document.getElementById('mainSection');
+  // Пример документов (будут храниться в localStorage)
+  let documents = JSON.parse(localStorage.getItem('documents') || "[]");
+
+  const loginForm = document.getElementById('loginForm');
+  const docsSection = document.getElementById('docsSection');
+  const loginInput = document.getElementById('loginInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const loginBtn = document.getElementById('loginBtn');
+  const statusDiv = document.getElementById('status');
   const userNameSpan = document.getElementById('userName');
-  const userRoleSpan = document.getElementById('userRole');
+  const docsList = document.getElementById('docsList');
   const logoutBtn = document.getElementById('logoutBtn');
 
-  const createDocSection = document.getElementById('createDocSection');
-  const fioInput = document.getElementById('fioInput');
-  const departmentInput = document.getElementById('departmentInput');
-  const docTypeSelect = document.getElementById('docTypeSelect');
-  const docNameInput = document.getElementById('docNameInput');
-  const docDescInput = document.getElementById('docDescInput');
-  const fileInput = document.getElementById('fileInput');
-  const uploadDocBtn = document.getElementById('uploadDocBtn');
-  const uploadCode = document.getElementById('uploadCode');
-
-  const docsList = document.getElementById('docsList');
-
-  const logsSection = document.getElementById('logsSection');
-  const logsList = document.getElementById('logsList');
-
-  // Логин
-  document.getElementById('loginBtn').onclick = () => {
-    const login = document.getElementById('loginInput').value.trim();
-    const password = document.getElementById('passwordInput').value.trim();
-
+  loginBtn.onclick = () => {
+    const login = loginInput.value.trim();
+    const pass = passwordInput.value.trim();
     if (!(login in ACCOUNTS)) {
-      alert('Неверный логин');
+      statusDiv.textContent = "Неверный логин";
       return;
     }
-    if (ACCOUNTS[login].password !== password) {
-      alert('Неверный пароль');
+    if (ACCOUNTS[login].password !== pass) {
+      statusDiv.textContent = "Неверный пароль";
       return;
     }
-
     currentUser = { login, ...ACCOUNTS[login] };
-    loginSection.classList.add('hidden');
-    mainSection.classList.remove('hidden');
-
-    userNameSpan.textContent = currentUser.name;
-    userRoleSpan.textContent = currentUser.role;
-
-    uploadCode.textContent = "";
-    fioInput.value = "";
-    departmentInput.value = "";
-    docNameInput.value = "";
-    docDescInput.value = "";
-    fileInput.value = "";
-
-    setupUIForRole();
-    renderDocuments();
-    renderLogs();
+    statusDiv.textContent = "";
+    showDocsSection();
   };
 
   logoutBtn.onclick = () => {
     currentUser = null;
-    loginSection.classList.remove('hidden');
-    mainSection.classList.add('hidden');
+    loginForm.style.display = 'block';
+    docsSection.style.display = 'none';
+    loginInput.value = '';
+    passwordInput.value = '';
   };
 
-  // Настройка UI по роли
-  function setupUIForRole() {
-    // Создатель (Правительство РФ) и Президент могут создавать документы
-    if (currentUser.role === 'creator' || currentUser.role === 'president') {
-      createDocSection.classList.remove('hidden');
-    } else {
-      createDocSection.classList.add('hidden');
-    }
-
-    // Минюст и Президент видят логи
-    if (currentUser.role === 'minjust' || currentUser.role === 'president') {
-      logsSection.classList.remove('hidden');
-    } else {
-      logsSection.classList.add('hidden');
-    }
+  function showDocsSection() {
+    loginForm.style.display = 'none';
+    docsSection.style.display = 'block';
+    userNameSpan.textContent = currentUser.name;
+    renderDocs();
   }
 
-  // Загрузка документа
-  uploadDocBtn.onclick = () => {
-    const fio = fioInput.value.trim();
-    const department = departmentInput.value.trim();
-    const docType = docTypeSelect.value;
-    const docName = docNameInput.value.trim();
-    const docDesc = docDescInput.value.trim();
-
-    if (fio.split(' ').length !== 3) {
-      alert('ФИО должно содержать 3 слова');
-      return;
-    }
-    if (!department) {
-      alert('Введите отдел');
-      return;
-    }
-    if (!docName) {
-      alert('Введите название документа');
-      return;
-    }
-    if (!fileInput.files.length) {
-      alert('Выберите файл');
-      return;
-    }
-
-    const file = fileInput.files[0];
-    const docId = 'DOC-' + Math.floor(Math.random() * 100000);
-
-    // Создаем "спецкод" для документа
-    const specialCode = `${docName} №${docId}`;
-
-    // Добавляем документ в память
-    documents.push({
-      id: docId,
-      fio,
-      department,
-      docType,
-      docName,
-      docDesc,
-      fileName: file.name,
-      fileURL: URL.createObjectURL(file), // для простоты создаем URL из файла
-      status: 'Ожидает одобрения',
-      createdBy: currentUser.login,
-      decisionBy: null,
-      decisionDate: null,
-      specialCode,
-    });
-
-    // Логируем создание
-    logs.push({
-      timestamp: new Date(),
-      user: currentUser.name,
-      action: `Создан документ ${docName} (${docId})`,
-    });
-
-    alert(`Документ зарегистрирован!\nКод для указа: ${specialCode}`);
-
-    // Очистка формы
-    fioInput.value = '';
-    departmentInput.value = '';
-    docNameInput.value = '';
-    docDescInput.value = '';
-    fileInput.value = '';
-    uploadCode.textContent = '';
-
-    renderDocuments();
-    renderLogs();
-  };
-
-  // Отрисовка документов
-  function renderDocuments() {
+  function renderDocs() {
     docsList.innerHTML = '';
-
     if (documents.length === 0) {
       docsList.textContent = 'Документов нет.';
       return;
     }
-
-    documents.forEach(doc => {
+    documents.forEach((doc, i) => {
       const div = document.createElement('div');
       div.className = 'doc';
-
       div.innerHTML = `
-        <b>${doc.docType}:</b> ${doc.docName} <br/>
-        <b>ФИО:</b> ${doc.fio} <br/>
-        <b>Отдел:</b> ${doc.department} <br/>
-        <b>Описание:</b> ${doc.docDesc || '-'} <br/>
-        <b>Файл:</b> <a href="${doc.fileURL}" target="_blank">${doc.fileName}</a> <br/>
-        <b>Статус:</b> ${doc.status} <br/>
-        <b>Код документа:</b> ${doc.specialCode} <br/>
-        <b>Создал:</b> ${ACCOUNTS[doc.createdBy]?.name || doc.createdBy} <br/>
-        ${doc.decisionBy ? `<b>Решение:</b> ${doc.status} пользователем ${doc.decisionBy} (${new Date(doc.decisionDate).toLocaleString()})` : ''}
+        <h3>${doc.title} (№${doc.number})</h3>
+        <b>ФИО:</b> ${doc.fio} <br>
+        <b>Отдел:</b> ${doc.department} <br>
+        <b>Вид:</b> ${doc.docType} <br>
+        <b>Статус:</b> ${doc.status} <br>
+        <b>Создал:</b> ${doc.createdBy} <br>
+        <b>Описание:</b> ${doc.description || '-'} <br>
+        <b>Файл:</b> ${doc.fileName || '-'} <br>
+        <div id="qrcode-${i}" class="qr-code"></div>
       `;
-
-      // Кнопки для ролей
-
-      // Правительство РФ - только создание, кнопок нет
-      if (currentUser.role === 'creator') {
-        // нет кнопок
-      }
-
-      // Минюст - может одобрять, отклонять, удалять
-      if (currentUser.role === 'minjust') {
-        const btnApprove = document.createElement('button');
-        btnApprove.textContent = 'Одобрить';
-        btnApprove.onclick = () => updateDocStatus(doc.id, 'Одобрен');
-        const btnReject = document.createElement('button');
-        btnReject.textContent = 'Отклонить';
-        btnReject.onclick = () => updateDocStatus(doc.id, 'Отклонён');
-        const btnDelete = document.createElement('button');
-        btnDelete.textContent = 'Удалить';
-        btnDelete.onclick = () => deleteDocument(doc.id);
-        const btnsDiv = document.createElement('div');
-        btnsDiv.className = 'admin-buttons';
-        btnsDiv.append(btnApprove, btnReject, btnDelete);
-        div.appendChild(btnsDiv);
-      }
-
-      // Президент - полный доступ
-      if (currentUser.role === 'president') {
-        const btnApprove = document.createElement('button');
-        btnApprove.textContent = 'Одобрить';
-        btnApprove.onclick = () => updateDocStatus(doc.id, 'Одобрен');
-        const btnReject = document.createElement('button');
-        btnReject.textContent = 'Отклонить';
-        btnReject.onclick = () => updateDocStatus(doc.id, 'Отклонён');
-        const btnDelete = document.createElement('button');
-        btnDelete.textContent = 'Удалить';
-        btnDelete.onclick = () => deleteDocument(doc.id);
-        const btnsDiv = document.createElement('div');
-        btnsDiv.className = 'admin-buttons';
-        btnsDiv.append(btnApprove, btnReject, btnDelete);
-        div.appendChild(btnsDiv);
-      }
-
       docsList.appendChild(div);
+      // Создаем QR-код с текстом (например, с номером документа)
+      new QRCode(document.getElementById(`qrcode-${i}`), {
+        text: `Документ №${doc.number} - ${doc.title}`,
+        width: 100,
+        height: 100,
+      });
     });
   }
 
-  // Обновление статуса документа (одобрить / отклонить)
-  function updateDocStatus(docId, newStatus) {
-    const doc = documents.find(d => d.id === docId);
-    if (!doc) return;
-
-    doc.status = newStatus;
-    doc.decisionBy = currentUser.name;
-    doc.decisionDate = new Date();
-
-    logs.push({
-      timestamp: new Date(),
-      user: currentUser.name,
-      action: `Документ ${doc.docName} (${doc.id}) - статус изменён на "${newStatus}"`,
+  // Для теста: при первой загрузке добавим пример документа, если нет
+  if (documents.length === 0) {
+    documents.push({
+      number: 1,
+      title: "Постановление №123",
+      fio: "Иванов Иван Иванович",
+      department: "Юридический отдел",
+      docType: "Постановление",
+      description: "Описание постановления",
+      fileName: "postanovlenie123.pdf",
+      status: "Ожидает одобрения",
+      createdBy: "pravitelstvo",
     });
-
-    renderDocuments();
-    renderLogs();
+    localStorage.setItem('documents', JSON.stringify(documents));
   }
-
-  // Удаление документа
-  function deleteDocument(docId) {
-    const docIndex = documents.findIndex(d => d.id === docId);
-    if (docIndex === -1) return;
-
-    logs.push({
-      timestamp: new Date(),
-      user: currentUser.name,
-      action: `Документ ${documents[docIndex].docName} (${docId}) удалён`,
-    });
-
-    documents.splice(docIndex, 1);
-    renderDocuments();
-    renderLogs();
-  }
-
-  // Отрисовка логов
-  function renderLogs() {
-    logsList.innerHTML = '';
-    if (logs.length === 0) {
-      logsList.textContent = 'Логи пусты.';
-      return;
-    }
-
-    logs.forEach(log => {
-      const div = document.createElement('div');
-      div.className = 'log-entry';
-      div.textContent = `[${new Date(log.timestamp).toLocaleString()}] ${log.user}: ${log.action}`;
-      logsList.appendChild(div);
-    });
-  }
-
 </script>
-
 </body>
 </html>
