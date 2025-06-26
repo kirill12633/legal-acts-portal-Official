@@ -2,179 +2,370 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Портал регистрации актов</title>
+<title>Legal Acts Portal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    max-width: 700px;
-    margin: 30px auto;
-    padding: 10px;
-  }
-  #loginForm, #docsSection {
-    border: 1px solid #ccc;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-  }
-  input, button, select {
-    padding: 8px;
-    margin-top: 8px;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .doc {
-    border: 1px solid #888;
-    padding: 10px;
-    margin: 8px 0;
-    border-radius: 6px;
-  }
-  .doc h3 {
-    margin: 0 0 8px 0;
-  }
-  .qr-code {
-    margin-top: 8px;
-  }
-  #logoutBtn {
-    background-color: #cc3333;
-    color: white;
-    border: none;
-    margin-top: 15px;
-    cursor: pointer;
-  }
-  #loginBtn {
-    background-color: #2a8;
-    color: white;
-    border: none;
-    cursor: pointer;
-  }
-  #status {
-    margin-top: 10px;
-    color: red;
-  }
+  body { max-width: 700px; margin: 20px auto; font-family: Arial, sans-serif; }
+  input, button, select, textarea { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+  #loginSection, #createDocSection, #docsSection, #logsSection { margin-bottom: 20px; border: 1px solid #ccc; padding: 15px; border-radius: 6px; }
+  .doc { border: 1px solid #aaa; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+  .admin-buttons button { margin-right: 6px; }
+  .qrcode { margin-top: 8px; }
+  #logsSection { max-height: 200px; overflow-y: auto; background: #f9f9f9; font-size: 14px; }
 </style>
 </head>
 <body>
 
-<h1>Портал регистрации актов</h1>
+<h2>Портал регистрации правовых актов</h2>
 
-<div id="loginForm">
-  <h2>Вход</h2>
+<div id="loginSection">
+  <h3>Вход</h3>
   <input type="text" id="loginInput" placeholder="Логин" />
   <input type="password" id="passwordInput" placeholder="Пароль" />
   <button id="loginBtn">Войти</button>
-  <div id="status"></div>
+  <p id="welcomeMsg"></p>
+  <button id="logoutBtn" style="display:none;">Выйти</button>
+</div>
+
+<div id="createDocSection" style="display:none;">
+  <h3>Регистрация акта (только для Правительства)</h3>
+  <input type="text" id="fioInput" placeholder="ФИО (3 слова)" />
+  <input type="text" id="departmentInput" placeholder="Отдел" />
+  <select id="docTypeSelect">
+    <option value="Постановление">Постановление</option>
+    <option value="Указ">Указ</option>
+  </select>
+  <input type="text" id="docTitleInput" placeholder="Название документа" />
+  <textarea id="docDescInput" placeholder="Описание (не обязательно)" rows="3"></textarea>
+  <input type="file" id="fileInput" />
+  <button id="uploadDocBtn">Загрузить документ</button>
+  <p id="docUploadStatus"></p>
 </div>
 
 <div id="docsSection" style="display:none;">
-  <h2>Добро пожаловать, <span id="userName"></span></h2>
-  <button id="logoutBtn">Выйти</button>
-
   <h3>Документы</h3>
   <div id="docsList"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>
-  // Простые аккаунты
-  const ACCOUNTS = {
-    "pravitelstvo": { password: "123", role: "creator", name: "Правительство РФ" },
-    "minjust": { password: "456", role: "minjust", name: "Министерство Юстиции" },
-    "prezident": { password: "789", role: "president", name: "Президент РФ" },
-  };
+<div id="logsSection" style="display:none;">
+  <h3>Логи действий (только для Минюста и Президента)</h3>
+  <div id="logsList"></div>
+</div>
 
-  // Храним текущего пользователя
-  let currentUser = null;
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 
-  // Пример документов (будут храниться в localStorage)
-  let documents = JSON.parse(localStorage.getItem('documents') || "[]");
+const firebaseConfig = {
+  apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
+  authDomain: "legal-acts-portal.firebaseapp.com",
+  projectId: "legal-acts-portal",
+  storageBucket: "legal-acts-portal.appspot.com",
+  messagingSenderId: "969951897920",
+  appId: "1:969951897920:web:3e35b87565cfcc9e0832a5"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-  const loginForm = document.getElementById('loginForm');
-  const docsSection = document.getElementById('docsSection');
-  const loginInput = document.getElementById('loginInput');
-  const passwordInput = document.getElementById('passwordInput');
-  const loginBtn = document.getElementById('loginBtn');
-  const statusDiv = document.getElementById('status');
-  const userNameSpan = document.getElementById('userName');
-  const docsList = document.getElementById('docsList');
-  const logoutBtn = document.getElementById('logoutBtn');
+const ACCOUNTS = {
+  "pravitelstvo": { password: "123", role: "pravitelstvo", name: "Правительство РФ" },
+  "minjust": { password: "456", role: "minjust", name: "Министерство Юстиции" },
+  "prezident": { password: "789", role: "prezident", name: "Президент РФ" }
+};
 
-  loginBtn.onclick = () => {
-    const login = loginInput.value.trim();
-    const pass = passwordInput.value.trim();
-    if (!(login in ACCOUNTS)) {
-      statusDiv.textContent = "Неверный логин";
-      return;
-    }
-    if (ACCOUNTS[login].password !== pass) {
-      statusDiv.textContent = "Неверный пароль";
-      return;
-    }
-    currentUser = { login, ...ACCOUNTS[login] };
-    statusDiv.textContent = "";
-    showDocsSection();
-  };
+let currentUser = null;
 
-  logoutBtn.onclick = () => {
-    currentUser = null;
-    loginForm.style.display = 'block';
-    docsSection.style.display = 'none';
-    loginInput.value = '';
-    passwordInput.value = '';
-  };
+const loginInput = document.getElementById("loginInput");
+const passwordInput = document.getElementById("passwordInput");
+const loginBtn = document.getElementById("loginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const welcomeMsg = document.getElementById("welcomeMsg");
 
-  function showDocsSection() {
-    loginForm.style.display = 'none';
-    docsSection.style.display = 'block';
-    userNameSpan.textContent = currentUser.name;
-    renderDocs();
+const createDocSection = document.getElementById("createDocSection");
+const fioInput = document.getElementById("fioInput");
+const departmentInput = document.getElementById("departmentInput");
+const docTypeSelect = document.getElementById("docTypeSelect");
+const docTitleInput = document.getElementById("docTitleInput");
+const docDescInput = document.getElementById("docDescInput");
+const fileInput = document.getElementById("fileInput");
+const uploadDocBtn = document.getElementById("uploadDocBtn");
+const docUploadStatus = document.getElementById("docUploadStatus");
+
+const docsSection = document.getElementById("docsSection");
+const docsList = document.getElementById("docsList");
+
+const logsSection = document.getElementById("logsSection");
+const logsList = document.getElementById("logsList");
+
+// --- Helper: create QR code element ---
+function createQRCode(url) {
+  const div = document.createElement("div");
+  div.className = "qrcode";
+  new QRCode(div, { text: url, width: 100, height: 100 });
+  return div;
+}
+
+loginBtn.onclick = () => {
+  const login = loginInput.value.trim();
+  const password = passwordInput.value.trim();
+  if (!ACCOUNTS[login]) {
+    alert("Неверный логин");
+    return;
+  }
+  if (ACCOUNTS[login].password !== password) {
+    alert("Неверный пароль");
+    return;
+  }
+  currentUser = { login, ...ACCOUNTS[login] };
+  afterLogin();
+};
+
+logoutBtn.onclick = () => {
+  currentUser = null;
+  resetUI();
+};
+
+function afterLogin() {
+  welcomeMsg.textContent = `Добро пожаловать! Вы вошли как: ${currentUser.name} (${currentUser.role})`;
+  loginBtn.style.display = "none";
+  logoutBtn.style.display = "inline-block";
+  loginInput.style.display = "none";
+  passwordInput.style.display = "none";
+
+  if (currentUser.role === "pravitelstvo") {
+    createDocSection.style.display = "block";
+    logsSection.style.display = "none";
+  } else if (currentUser.role === "minjust" || currentUser.role === "prezident") {
+    createDocSection.style.display = "none";
+    logsSection.style.display = "block";
   }
 
-  function renderDocs() {
-    docsList.innerHTML = '';
-    if (documents.length === 0) {
-      docsList.textContent = 'Документов нет.';
-      return;
-    }
-    documents.forEach((doc, i) => {
-      const div = document.createElement('div');
-      div.className = 'doc';
-      div.innerHTML = `
-        <h3>${doc.title} (№${doc.number})</h3>
-        <b>ФИО:</b> ${doc.fio} <br>
-        <b>Отдел:</b> ${doc.department} <br>
-        <b>Вид:</b> ${doc.docType} <br>
-        <b>Статус:</b> ${doc.status} <br>
-        <b>Создал:</b> ${doc.createdBy} <br>
-        <b>Описание:</b> ${doc.description || '-'} <br>
-        <b>Файл:</b> ${doc.fileName || '-'} <br>
-        <div id="qrcode-${i}" class="qr-code"></div>
-      `;
-      docsList.appendChild(div);
-      // Создаем QR-код с текстом (например, с номером документа)
-      new QRCode(document.getElementById(`qrcode-${i}`), {
-        text: `Документ №${doc.number} - ${doc.title}`,
-        width: 100,
-        height: 100,
-      });
-    });
+  docsSection.style.display = "block";
+  loadDocuments();
+  if (currentUser.role === "minjust" || currentUser.role === "prezident") {
+    loadLogs();
+  } else {
+    logsList.innerHTML = "";
+  }
+}
+
+function resetUI() {
+  welcomeMsg.textContent = "";
+  loginBtn.style.display = "inline-block";
+  logoutBtn.style.display = "none";
+  loginInput.style.display = "inline-block";
+  passwordInput.style.display = "inline-block";
+
+  createDocSection.style.display = "none";
+  docsSection.style.display = "none";
+  logsSection.style.display = "none";
+  docsList.innerHTML = "";
+  logsList.innerHTML = "";
+  fioInput.value = "";
+  departmentInput.value = "";
+  docTitleInput.value = "";
+  docDescInput.value = "";
+  fileInput.value = "";
+  docUploadStatus.textContent = "";
+}
+
+// Создание документа (только для правительства)
+uploadDocBtn.onclick = async () => {
+  if (!currentUser || currentUser.role !== "pravitelstvo") {
+    alert("У вас нет прав создавать документы");
+    return;
+  }
+  const fio = fioInput.value.trim();
+  const department = departmentInput.value.trim();
+  const docType = docTypeSelect.value;
+  const title = docTitleInput.value.trim();
+  const desc = docDescInput.value.trim();
+
+  if (fio.split(" ").length !== 3) {
+    alert("ФИО должно содержать 3 слова");
+    return;
+  }
+  if (!department) {
+    alert("Введите отдел");
+    return;
+  }
+  if (!title) {
+    alert("Введите название документа");
+    return;
+  }
+  if (!fileInput.files.length) {
+    alert("Выберите файл");
+    return;
   }
 
-  // Для теста: при первой загрузке добавим пример документа, если нет
-  if (documents.length === 0) {
-    documents.push({
-      number: 1,
-      title: "Постановление №123",
-      fio: "Иванов Иван Иванович",
-      department: "Юридический отдел",
-      docType: "Постановление",
-      description: "Описание постановления",
-      fileName: "postanovlenie123.pdf",
+  docUploadStatus.textContent = "Загрузка файла...";
+  const file = fileInput.files[0];
+  const filePath = `documents/${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, filePath);
+
+  try {
+    await uploadBytes(storageRef, file);
+    const fileURL = await getDownloadURL(storageRef);
+
+    // Создаем документ в Firestore
+    const docRef = await addDoc(collection(db, "documents"), {
+      fio,
+      department,
+      docType,
+      title,
+      desc,
+      fileName: file.name,
+      fileURL,
+      filePath,
       status: "Ожидает одобрения",
-      createdBy: "pravitelstvo",
+      createdBy: currentUser.login,
+      createdAt: new Date()
     });
-    localStorage.setItem('documents', JSON.stringify(documents));
+
+    docUploadStatus.textContent = `Документ загружен. Код документа: ${docRef.id}`;
+    fioInput.value = "";
+    departmentInput.value = "";
+    docTitleInput.value = "";
+    docDescInput.value = "";
+    fileInput.value = "";
+
+    logAction(`Создан документ ${title} (ID: ${docRef.id})`);
+
+    loadDocuments();
+
+  } catch (error) {
+    docUploadStatus.textContent = "";
+    alert("Ошибка загрузки: " + error.message);
   }
+};
+
+// Загрузка документов и отображение с контролями
+async function loadDocuments() {
+  docsList.innerHTML = "Загрузка документов...";
+  const q = query(collection(db, "documents"), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+
+  docsList.innerHTML = "";
+
+  if (snapshot.empty) {
+    docsList.textContent = "Документов нет";
+    return;
+  }
+
+  snapshot.forEach(docSnap => {
+    const docData = docSnap.data();
+    const docId = docSnap.id;
+
+    const div = document.createElement("div");
+    div.className = "doc";
+
+    div.innerHTML = `
+      <b>${docData.title}</b> (${docData.docType})<br>
+      ФИО: ${docData.fio}<br>
+      Отдел: ${docData.department}<br>
+      Статус: ${docData.status}<br>
+      Описание: ${docData.desc || '-'}<br>
+      Создал: ${docData.createdBy}<br>
+      <a href="${docData.fileURL}" target="_blank">Открыть файл</a>
+    `;
+
+    // Добавим QR-код ссылки на документ
+    const qrDiv = createQRCode(docData.fileURL);
+    div.appendChild(qrDiv);
+
+    // Кнопки для минюста и президента
+    if (currentUser.role === "minjust" || currentUser.role === "prezident") {
+      const adminButtons = document.createElement("div");
+      adminButtons.className = "admin-buttons";
+
+      // Одобрить
+      const approveBtn = document.createElement("button");
+      approveBtn.textContent = "Одобрить";
+      approveBtn.onclick = async () => {
+        await updateDoc(doc(db, "documents", docId), { status: "Одобрен" });
+        logAction(`Документ ${docData.title} одобрен пользователем ${currentUser.login}`);
+        loadDocuments();
+      };
+
+      // Отклонить
+      const rejectBtn = document.createElement("button");
+      rejectBtn.textContent = "Отклонить";
+      rejectBtn.onclick = async () => {
+        await updateDoc(doc(db, "documents", docId), { status: "Отклонен" });
+        logAction(`Документ ${docData.title} отклонен пользователем ${currentUser.login}`);
+        loadDocuments();
+      };
+
+      adminButtons.appendChild(approveBtn);
+      adminButtons.appendChild(rejectBtn);
+
+      if (currentUser.role === "prezident") {
+        // Удалить
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Удалить";
+        deleteBtn.onclick = async () => {
+          if (confirm("Удалить документ?")) {
+            try {
+              // Удаляем файл из storage
+              await deleteObject(ref(storage, docData.filePath));
+              // Удаляем документ из Firestore
+              await updateDoc(doc(db, "documents", docId), { status: "Удален" });
+              logAction(`Документ ${docData.title} удален пользователем Президентом`);
+              loadDocuments();
+            } catch(e) {
+              alert("Ошибка удаления: " + e.message);
+            }
+          }
+        };
+        adminButtons.appendChild(deleteBtn);
+      }
+
+      div.appendChild(adminButtons);
+    }
+
+    docsList.appendChild(div);
+  });
+}
+
+// Логирование действий (для минюста и президента)
+async function logAction(text) {
+  if (!currentUser) return;
+  await addDoc(collection(db, "logs"), {
+    user: currentUser.login,
+    action: text,
+    timestamp: new Date()
+  });
+}
+
+function formatDate(date) {
+  return new Date(date).toLocaleString("ru-RU");
+}
+
+async function loadLogs() {
+  logsList.innerHTML = "Загрузка логов...";
+  const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
+  const snapshot = await getDocs(q);
+  logsList.innerHTML = "";
+
+  if (snapshot.empty) {
+    logsList.textContent = "Логов нет";
+    return;
+  }
+
+  snapshot.forEach(docSnap => {
+    const log = docSnap.data();
+    const p = document.createElement("p");
+    p.textContent = `[${formatDate(log.timestamp.toDate())}] ${log.user}: ${log.action}`;
+    logsList.appendChild(p);
+  });
+}
+
+// При старте сбрасываем UI
+resetUI();
+
 </script>
+
 </body>
 </html>
