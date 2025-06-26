@@ -3,65 +3,42 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Legal Acts Portal</title>
+<title>Портал регистрации актов</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 700px; margin: auto; padding: 10px;}
-  #loginBlock, #appBlock {margin-top:20px;}
-  .hidden { display: none; }
-  .doc { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-  #logs { font-size: 0.8em; background: #f9f9f9; border: 1px solid #ddd; padding: 10px; height: 150px; overflow-y: scroll; }
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 700px;
+    margin: 30px auto;
+    padding: 0 15px;
+  }
+  input, select, textarea, button {
+    width: 100%;
+    padding: 8px;
+    margin: 6px 0 15px 0;
+    box-sizing: border-box;
+  }
+  label {
+    font-weight: bold;
+  }
+  .doc {
+    border: 1px solid #ccc;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    position: relative;
+  }
+  .qr-code {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+  }
 </style>
-</head>
-<body>
-
-<h2>Legal Acts Portal</h2>
-
-<div id="loginBlock">
-  <h3>Вход</h3>
-  <label>Логин: <input id="loginInput" /></label><br /><br />
-  <label>Пароль: <input id="passwordInput" type="password" /></label><br /><br />
-  <button id="loginBtn">Войти</button>
-  <div id="loginError" style="color:red;"></div>
-</div>
-
-<div id="appBlock" class="hidden">
-  <h3>Добро пожаловать, <span id="userName"></span> (роль: <span id="userRole"></span>)</h3>
-  <button id="logoutBtn">Выйти</button>
-  <hr />
-
-  <div id="createDocSection" class="hidden">
-    <h3>Регистрация акта</h3>
-    <label>ФИО: <input id="fioInput" /></label><br /><br />
-    <label>Отдел: <input id="departmentInput" /></label><br /><br />
-    <label>Вид документа: 
-      <select id="docTypeSelect">
-        <option value="Указ">Указ</option>
-        <option value="Постановление">Постановление</option>
-      </select>
-    </label><br /><br />
-    <label>Название документа: <input id="docTitleInput" /></label><br /><br />
-    <label>Описание (необязательно): <input id="docDescInput" /></label><br /><br />
-    <label>Файл: <input type="file" id="fileInput" /></label><br /><br />
-    <button id="uploadDocBtn">Загрузить документ</button>
-    <div id="docUploadStatus"></div>
-  </div>
-
-  <hr />
-  <h3>Документы</h3>
-  <div id="docsList">Загрузка документов...</div>
-
-  <hr />
-  <h3>Логи действий</h3>
-  <div id="logs"></div>
-</div>
-
-<!-- Firebase SDK -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, updateDoc, doc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
   import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 
-  // --- Настройки Firebase ---
   const firebaseConfig = {
     apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
     authDomain: "legal-acts-portal.firebaseapp.com",
@@ -70,189 +47,165 @@
     messagingSenderId: "969951897920",
     appId: "1:969951897920:web:3e35b87565cfcc9e0832a5"
   };
+
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const storage = getStorage(app);
 
-  // --- Пользователи (заготовка, в реале должно быть в БД или через Firebase Auth) ---
-  // пароль в явном виде только для демонстрации!
-  const users = {
-    "pravitelstvo": { password: "pravitelstvo123", role: "pravitelstvo", fio: "Правительство РФ" },
-    "minyust": { password: "minyust123", role: "minyust", fio: "Министерство Юстиции" },
-    "prezident": { password: "prezident123", role: "prezident", fio: "Президент РФ" }
-  };
+  window.onload = () => {
+    loadDocuments();
 
-  // --- Элементы ---
-  const loginBlock = document.getElementById("loginBlock");
-  const appBlock = document.getElementById("appBlock");
-  const loginInput = document.getElementById("loginInput");
-  const passwordInput = document.getElementById("passwordInput");
-  const loginBtn = document.getElementById("loginBtn");
-  const loginError = document.getElementById("loginError");
-  const userNameSpan = document.getElementById("userName");
-  const userRoleSpan = document.getElementById("userRole");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const createDocSection = document.getElementById("createDocSection");
+    document.getElementById('uploadBtn').onclick = async () => {
+      const discordNick = document.getElementById('discordNick').value.trim();
+      const fio = document.getElementById('fio').value.trim();
+      const docType = document.getElementById('docType').value;
+      const department = document.getElementById('department').value.trim();
+      const title = document.getElementById('title').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const fileInput = document.getElementById('fileInput');
 
-  const fioInput = document.getElementById("fioInput");
-  const departmentInput = document.getElementById("departmentInput");
-  const docTypeSelect = document.getElementById("docTypeSelect");
-  const docTitleInput = document.getElementById("docTitleInput");
-  const docDescInput = document.getElementById("docDescInput");
-  const fileInput = document.getElementById("fileInput");
-  const uploadDocBtn = document.getElementById("uploadDocBtn");
-  const docUploadStatus = document.getElementById("docUploadStatus");
-
-  const docsList = document.getElementById("docsList");
-  const logsDiv = document.getElementById("logs");
-
-  let currentUser = null;
-
-  // --- Логирование ---
-  function logAction(text) {
-    const time = new Date().toLocaleString();
-    logsDiv.innerHTML = `<div>[${time}] ${text}</div>` + logsDiv.innerHTML;
-  }
-
-  // --- Авторизация ---
-  loginBtn.onclick = () => {
-    const login = loginInput.value.trim();
-    const pass = passwordInput.value.trim();
-    if (!users[login]) {
-      loginError.textContent = "Пользователь не найден";
-      return;
-    }
-    if (users[login].password !== pass) {
-      loginError.textContent = "Неверный пароль";
-      return;
-    }
-    loginError.textContent = "";
-    currentUser = { login, ...users[login] };
-    loginBlock.classList.add("hidden");
-    appBlock.classList.remove("hidden");
-    userNameSpan.textContent = currentUser.fio;
-    userRoleSpan.textContent = currentUser.role;
-
-    if (currentUser.role === "pravitelstvo") {
-      createDocSection.classList.remove("hidden");
-    } else {
-      createDocSection.classList.add("hidden");
-    }
-
-    subscribeToDocuments();
-    logAction(`Пользователь вошел: ${currentUser.login} (${currentUser.role})`);
-  };
-
-  logoutBtn.onclick = () => {
-    currentUser = null;
-    loginInput.value = "";
-    passwordInput.value = "";
-    loginBlock.classList.remove("hidden");
-    appBlock.classList.add("hidden");
-    docsList.innerHTML = "";
-    logsDiv.innerHTML = "";
-  };
-
-  // --- Загрузка документа ---
-  uploadDocBtn.onclick = async () => {
-    if (!currentUser || currentUser.role !== "pravitelstvo") {
-      alert("У вас нет прав на создание документов");
-      return;
-    }
-    const fio = fioInput.value.trim();
-    const department = departmentInput.value.trim();
-    const docType = docTypeSelect.value;
-    const title = docTitleInput.value.trim();
-    const desc = docDescInput.value.trim();
-
-    if (fio.split(" ").length !== 3) {
-      alert("ФИО должно содержать 3 слова");
-      return;
-    }
-    if (!department) {
-      alert("Введите отдел");
-      return;
-    }
-    if (!title) {
-      alert("Введите название документа");
-      return;
-    }
-    if (!fileInput.files.length) {
-      alert("Выберите файл");
-      return;
-    }
-
-    uploadDocBtn.disabled = true;
-    docUploadStatus.textContent = "Загрузка файла...";
-
-    try {
-      const file = fileInput.files[0];
-      const filePath = `documents/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, filePath);
-
-      await uploadBytes(storageRef, file);
-      const fileURL = await getDownloadURL(storageRef);
-
-      await addDoc(collection(db, "documents"), {
-        fio,
-        department,
-        docType,
-        title,
-        desc,
-        fileName: file.name,
-        fileURL,
-        filePath,
-        status: "Ожидает одобрения",
-        createdBy: currentUser.login,
-        createdAt: new Date()
-      });
-
-      docUploadStatus.textContent = "Документ успешно загружен";
-      fioInput.value = "";
-      departmentInput.value = "";
-      docTitleInput.value = "";
-      docDescInput.value = "";
-      fileInput.value = "";
-
-      logAction(`Создан документ: ${title} пользователем ${currentUser.login}`);
-
-    } catch (e) {
-      alert("Ошибка загрузки: " + e.message);
-      docUploadStatus.textContent = "";
-    }
-    uploadDocBtn.disabled = false;
-  };
-
-  // --- Подписка на документы ---
-  function subscribeToDocuments() {
-    const q = query(collection(db, "documents"), orderBy("createdAt", "desc"));
-    onSnapshot(q, (snapshot) => {
-      docsList.innerHTML = "";
-      if (snapshot.empty) {
-        docsList.textContent = "Документов нет";
+      if (!discordNick || !fio || !docType || !department || !title) {
+        alert('Пожалуйста, заполните все обязательные поля!');
         return;
       }
-      snapshot.forEach(docSnap => {
-        const docData = docSnap.data();
-        const div = document.createElement("div");
-        div.className = "doc";
 
-        div.innerHTML = `
-          <b>${docData.title}</b> (${docData.docType})<br>
-          ФИО: ${docData.fio}<br>
-          Отдел: ${docData.department}<br>
-          Статус: ${docData.status}<br>
-          Описание: ${docData.desc || '-'}<br>
-          Создал: ${docData.createdBy}<br>
-          <a href="${docData.fileURL}" target="_blank">Открыть файл</a>
-        `;
+      if (fileInput.files.length === 0) {
+        alert('Пожалуйста, выберите файл для загрузки!');
+        return;
+      }
 
-        docsList.appendChild(div);
+      const file = fileInput.files[0];
+      const fileRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+
+      try {
+        await uploadBytes(fileRef, file);
+        const fileURL = await getDownloadURL(fileRef);
+
+        await addDoc(collection(db, 'documents'), {
+          discordNick,
+          fio,
+          docType,
+          department,
+          title,
+          description,
+          fileName: file.name,
+          fileURL,
+          createdAt: new Date()
+        });
+
+        alert('Документ успешно загружен!');
+        clearForm();
+        loadDocuments();
+
+      } catch (e) {
+        alert('Ошибка загрузки: ' + e.message);
+      }
+    };
+  };
+
+  function clearForm() {
+    document.getElementById('discordNick').value = '';
+    document.getElementById('fio').value = '';
+    document.getElementById('docType').value = '';
+    document.getElementById('department').value = '';
+    document.getElementById('title').value = '';
+    document.getElementById('description').value = '';
+    document.getElementById('fileInput').value = '';
+  }
+
+  async function loadDocuments() {
+    const docsDiv = document.getElementById('docs');
+    docsDiv.innerHTML = '<h2>Зарегистрированные документы</h2>';
+
+    const q = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      docsDiv.innerHTML += '<p>Документов пока нет.</p>';
+      return;
+    }
+
+    snapshot.forEach(docSnap => {
+      const d = docSnap.data();
+
+      const div = document.createElement('div');
+      div.className = 'doc';
+
+      div.innerHTML = `
+        <p><b>Ник Discord:</b> ${escapeHtml(d.discordNick)}</p>
+        <p><b>ФИО:</b> ${escapeHtml(d.fio)}</p>
+        <p><b>Вид документа:</b> ${escapeHtml(d.docType)}</p>
+        <p><b>Отдел:</b> ${escapeHtml(d.department)}</p>
+        <p><b>Название:</b> ${escapeHtml(d.title)}</p>
+        <p><b>Описание:</b> ${escapeHtml(d.description || '-')}</p>
+        <p><b>Файл:</b> <a href="${d.fileURL}" target="_blank">Открыть документ</a></p>
+      `;
+
+      const qrDiv = document.createElement('div');
+      qrDiv.className = 'qr-code';
+      div.appendChild(qrDiv);
+
+      new QRCode(qrDiv, {
+        text: d.fileURL,
+        width: 100,
+        height: 100
       });
+
+      docsDiv.appendChild(div);
     });
   }
 
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(m) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[m];
+    });
+  }
 </script>
+</head>
+<body>
+
+<h1>Добро пожаловать!</h1>
+<p>Пожалуйста, заполните данные для регистрации документа.</p>
+
+<label for="discordNick">Ник в Discord *</label>
+<input type="text" id="discordNick" placeholder="Ваш ник в Discord" required />
+
+<label for="fio">ФИО *</label>
+<input type="text" id="fio" placeholder="Фамилия Имя Отчество" required />
+
+<label for="docType">Вид документа *</label>
+<select id="docType" required>
+  <option value="" disabled selected>Выберите тип документа</option>
+  <option value="Постановление">Постановление</option>
+  <option value="Указ">Указ</option>
+  <option value="Приказ">Приказ</option>
+  <option value="Распоряжение">Распоряжение</option>
+</select>
+
+<label for="department">Отдел *</label>
+<input type="text" id="department" placeholder="Ваш отдел" required />
+
+<label for="title">Название документа *</label>
+<input type="text" id="title" placeholder="Название документа" required />
+
+<label for="description">Описание (не обязательно)</label>
+<textarea id="description" rows="3" placeholder="Краткое описание"></textarea>
+
+<label for="fileInput">Выберите файл *</label>
+<input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.jpg,.png" required />
+
+<button id="uploadBtn">Загрузить документ</button>
+
+<hr />
+
+<div id="docs"></div>
 
 </body>
 </html>
