@@ -1,211 +1,140 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Портал регистрации актов</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    max-width: 700px;
-    margin: 30px auto;
-    padding: 0 15px;
-  }
-  input, select, textarea, button {
-    width: 100%;
-    padding: 8px;
-    margin: 6px 0 15px 0;
-    box-sizing: border-box;
-  }
-  label {
-    font-weight: bold;
-  }
-  .doc {
-    border: 1px solid #ccc;
-    padding: 12px;
-    margin-bottom: 12px;
-    border-radius: 6px;
-    position: relative;
-  }
-  .qr-code {
-    position: absolute;
-    right: 10px;
-    top: 10px;
-  }
-</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <meta charset="UTF-8" />
+  <title>Регистрация правовых актов</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body { max-width: 700px; margin: 30px auto; font-family: Arial, sans-serif; }
+    input, select, textarea, button { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
+    .doc { border: 1px solid #ccc; padding: 12px; margin-bottom: 12px; position: relative; }
+    .qr-code { position: absolute; right: 10px; top: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>Добро пожаловать в регистрацию правовых актов</h1>
+
+<div>
+  <input id="discordNick" placeholder="Ник в Discord*" />
+  <input id="fio" placeholder="ФИО (3 слова)*" />
+  <select id="department">
+    <option value="" disabled selected>Выберите отдел</option>
+    <option value="Министерство обороны">Министерство обороны</option>
+    <option value="Министерство финансов">Министерство финансов</option>
+    <option value="ФСБ">ФСБ</option>
+    <option value="Другое">Свой вариант</option>
+  </select>
+  <input id="customDept" placeholder="Если своё — укажите отдел" />
+  <select id="docType">
+    <option value="" disabled selected>Тип документа*</option>
+    <option value="Указ">Указ</option>
+    <option value="Постановление">Постановление</option>
+    <option value="Приказ">Приказ</option>
+    <option value="Распоряжение">Распоряжение</option>
+  </select>
+  <input id="docNumber" placeholder="Номер документа*" />
+  <input id="title" placeholder="Название документа*" />
+  <textarea id="description" placeholder="Описание (необязательно)"></textarea>
+  <input id="pubDate" type="date" />
+  <input id="fileInput" type="file" />
+  <button id="submitBtn">Отправить документ</button>
+</div>
+
+<hr/>
+
+<div id="docs"></div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
   import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
   import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
-    authDomain: "legal-acts-portal.firebaseapp.com",
-    projectId: "legal-acts-portal",
-    storageBucket: "legal-acts-portal.appspot.com",
-    messagingSenderId: "969951897920",
-    appId: "1:969951897920:web:3e35b87565cfcc9e0832a5"
-  };
-
+  const firebaseConfig = { /* твоя конфигурация Firebase */ };
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const storage = getStorage(app);
 
-  window.onload = () => {
+  const discordNick = document.getElementById('discordNick');
+  const fio = document.getElementById('fio');
+  const department = document.getElementById('department');
+  const customDept = document.getElementById('customDept');
+  const docType = document.getElementById('docType');
+  const docNumber = document.getElementById('docNumber');
+  const title = document.getElementById('title');
+  const description = document.getElementById('description');
+  const pubDate = document.getElementById('pubDate');
+  const fileInput = document.getElementById('fileInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const docsDiv = document.getElementById('docs');
+
+  submitBtn.onclick = async () => {
+    // Проверки
+    if (!discordNick.value.trim() || fio.value.trim().split(' ').length !== 3 ||
+        !department.value || !docType.value || !docNumber.value.trim() ||
+        !title.value.trim() || !fileInput.files.length) {
+      return alert('Пожалуйста, заполните все обязательные поля корректно.');
+    }
+    let dept = department.value;
+    if (dept === 'Другое') {
+      dept = customDept.value.trim();
+      if (!dept) return alert('Укажите свой отдел.');
+    }
+
+    const file = fileInput.files[0];
+    const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+    await uploadBytes(storageRef, file);
+    const fileURL = await getDownloadURL(storageRef);
+
+    await addDoc(collection(db, 'documents'), {
+      discordNick: discordNick.value.trim(),
+      fio: fio.value.trim(),
+      department: dept,
+      docType: docType.value,
+      docNumber: docNumber.value.trim(),
+      title: title.value.trim(),
+      description: description.value.trim(),
+      pubDate: pubDate.value,
+      fileName: file.name,
+      fileURL,
+      createdAt: new Date()
+    });
+
+    alert('Документ отправлен!');
+    clearForm();
     loadDocuments();
-
-    document.getElementById('uploadBtn').onclick = async () => {
-      const discordNick = document.getElementById('discordNick').value.trim();
-      const fio = document.getElementById('fio').value.trim();
-      const docType = document.getElementById('docType').value;
-      const department = document.getElementById('department').value.trim();
-      const title = document.getElementById('title').value.trim();
-      const description = document.getElementById('description').value.trim();
-      const fileInput = document.getElementById('fileInput');
-
-      if (!discordNick || !fio || !docType || !department || !title) {
-        alert('Пожалуйста, заполните все обязательные поля!');
-        return;
-      }
-
-      if (fileInput.files.length === 0) {
-        alert('Пожалуйста, выберите файл для загрузки!');
-        return;
-      }
-
-      const file = fileInput.files[0];
-      const fileRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-
-      try {
-        await uploadBytes(fileRef, file);
-        const fileURL = await getDownloadURL(fileRef);
-
-        await addDoc(collection(db, 'documents'), {
-          discordNick,
-          fio,
-          docType,
-          department,
-          title,
-          description,
-          fileName: file.name,
-          fileURL,
-          createdAt: new Date()
-        });
-
-        alert('Документ успешно загружен!');
-        clearForm();
-        loadDocuments();
-
-      } catch (e) {
-        alert('Ошибка загрузки: ' + e.message);
-      }
-    };
   };
 
   function clearForm() {
-    document.getElementById('discordNick').value = '';
-    document.getElementById('fio').value = '';
-    document.getElementById('docType').value = '';
-    document.getElementById('department').value = '';
-    document.getElementById('title').value = '';
-    document.getElementById('description').value = '';
-    document.getElementById('fileInput').value = '';
+    discordNick.value = fio.value = docNumber.value = title.value = description.value = customDept.value = '';
+    department.value = docType.value = pubDate.value = '';
+    fileInput.value = '';
   }
 
   async function loadDocuments() {
-    const docsDiv = document.getElementById('docs');
-    docsDiv.innerHTML = '<h2>Зарегистрированные документы</h2>';
-
-    const q = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) {
-      docsDiv.innerHTML += '<p>Документов пока нет.</p>';
-      return;
-    }
-
+    docsDiv.innerHTML = '';
+    const snapshot = await getDocs(query(collection(db, 'documents'), orderBy('createdAt', 'desc')));
     snapshot.forEach(docSnap => {
       const d = docSnap.data();
-
       const div = document.createElement('div');
       div.className = 'doc';
-
       div.innerHTML = `
-        <p><b>Ник Discord:</b> ${escapeHtml(d.discordNick)}</p>
-        <p><b>ФИО:</b> ${escapeHtml(d.fio)}</p>
-        <p><b>Вид документа:</b> ${escapeHtml(d.docType)}</p>
-        <p><b>Отдел:</b> ${escapeHtml(d.department)}</p>
-        <p><b>Название:</b> ${escapeHtml(d.title)}</p>
-        <p><b>Описание:</b> ${escapeHtml(d.description || '-')}</p>
-        <p><b>Файл:</b> <a href="${d.fileURL}" target="_blank">Открыть документ</a></p>
+        <strong>${d.docType} №${d.docNumber} — ${d.title}</strong><br>
+        Discord: ${d.discordNick}<br>
+        ФИО: ${d.fio}<br>
+        Отдел: ${d.department}<br>
+        Описание: ${d.description || '—'}<br>
+        Дата публикации: ${d.pubDate || '—'}<br>
+        <a href="${d.fileURL}" target="_blank">Открыть файл (${d.fileName})</a>
+        <div id="qr-${docSnap.id}" class="qr-code"></div>
       `;
-
-      const qrDiv = document.createElement('div');
-      qrDiv.className = 'qr-code';
-      div.appendChild(qrDiv);
-
-      new QRCode(qrDiv, {
-        text: d.fileURL,
-        width: 100,
-        height: 100
-      });
-
       docsDiv.appendChild(div);
+      const info = `ФИО: ${d.fio}\nОтдел: ${d.department}\nДокумент: ${d.title}\nНомер: ${d.docNumber}\nURL: ${d.fileURL}`;
+      new QRCode(document.getElementById(`qr-${docSnap.id}`), { text: info, width: 100, height: 100 });
     });
   }
 
-  function escapeHtml(text) {
-    if (!text) return '';
-    return text.replace(/[&<>"']/g, function(m) {
-      return {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      }[m];
-    });
-  }
+  loadDocuments();
 </script>
-</head>
-<body>
-
-<h1>Добро пожаловать!</h1>
-<p>Пожалуйста, заполните данные для регистрации документа.</p>
-
-<label for="discordNick">Ник в Discord *</label>
-<input type="text" id="discordNick" placeholder="Ваш ник в Discord" required />
-
-<label for="fio">ФИО *</label>
-<input type="text" id="fio" placeholder="Фамилия Имя Отчество" required />
-
-<label for="docType">Вид документа *</label>
-<select id="docType" required>
-  <option value="" disabled selected>Выберите тип документа</option>
-  <option value="Постановление">Постановление</option>
-  <option value="Указ">Указ</option>
-  <option value="Приказ">Приказ</option>
-  <option value="Распоряжение">Распоряжение</option>
-</select>
-
-<label for="department">Отдел *</label>
-<input type="text" id="department" placeholder="Ваш отдел" required />
-
-<label for="title">Название документа *</label>
-<input type="text" id="title" placeholder="Название документа" required />
-
-<label for="description">Описание (не обязательно)</label>
-<textarea id="description" rows="3" placeholder="Краткое описание"></textarea>
-
-<label for="fileInput">Выберите файл *</label>
-<input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.jpg,.png" required />
-
-<button id="uploadBtn">Загрузить документ</button>
-
-<hr />
-
-<div id="docs"></div>
-
 </body>
 </html>
