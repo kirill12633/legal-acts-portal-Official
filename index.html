@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Генератор QR кода документа</title>
+  <title>Генератор QR-кода с "штрихкодом"</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     body {
@@ -22,10 +22,18 @@
       margin-top: 20px;
       text-align: center;
     }
+    #barcodeString {
+      font-family: monospace;
+      font-size: 24px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h1>Генератор QR-кода документа</h1>
+  <h1>Генератор QR-кода с "штрихкодом"</h1>
 
   <input type="text" id="fio" placeholder="ФИО (3 слова)" />
   
@@ -47,13 +55,31 @@
   <input type="text" id="title" placeholder="Название документа" />
   <textarea id="description" placeholder="Описание (необязательно)"></textarea>
   
-  <button id="generateBtn">Сгенерировать QR код</button>
+  <button id="generateBtn">Сгенерировать QR код и "штрихкод"</button>
 
+  <div id="barcodeString"></div>
   <div id="qrcode"></div>
 
   <script>
+    function generateBarcodeString(length = 20) {
+      // Пример генерации "штрихкода" из символов ｜ и пробелов
+      // Можно сделать по-другому, тут просто пример — случайная последовательность
+      const chars = ['｜', ' '];
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        // Для большей вариативности ставим по очереди, например, 3 черты — пробел — 2 черты — пробел и т.п.
+        if (i % 4 === 3) {
+          result += ' ';
+        } else {
+          result += '｜';
+        }
+      }
+      return result.trim();
+    }
+
     const generateBtn = document.getElementById('generateBtn');
     const qrcodeDiv = document.getElementById('qrcode');
+    const barcodeDiv = document.getElementById('barcodeString');
 
     generateBtn.onclick = () => {
       const fio = document.getElementById('fio').value.trim();
@@ -80,14 +106,20 @@
         return;
       }
 
+      // Генерируем "штрихкод"
+      const barcodeStr = generateBarcodeString(20);
+
+      // Текст для QR-кода — можно положить туда и эту строку и другие данные
       const qrText = `
 ФИО: ${fio}
 Фракция: ${faction}
 Вид документа: ${docType}
 Название: ${title}
 Описание: ${description || '—'}
+Штрихкод: ${barcodeStr}
 `.trim();
 
+      barcodeDiv.textContent = barcodeStr;
       qrcodeDiv.innerHTML = ''; // очистить старый QR
       new QRCode(qrcodeDiv, {
         text: qrText,
