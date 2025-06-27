@@ -150,7 +150,16 @@
     let documents = loadDocuments();
     renderDocuments(documents);
 
+    let lastSubmissionTime = 0;
+
     submitBtn.onclick = () => {
+      const now = Date.now();
+      if (now - lastSubmissionTime < 60000) {
+        errorBox.textContent = 'Пожалуйста, подождите 1 минуту перед следующей отправкой.';
+        return;
+      }
+      lastSubmissionTime = now;
+
       errorBox.textContent = '';
       const fioVal = fio.value.trim();
       if (fioVal.split(' ').length !== 3) {
