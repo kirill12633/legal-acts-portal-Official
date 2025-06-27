@@ -9,170 +9,268 @@
       max-width: 700px;
       margin: 30px auto;
       font-family: Arial, sans-serif;
+      background: #f7f9fc;
+      color: #333;
+      padding: 0 15px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
     }
     input, button, select, textarea {
       padding: 8px;
-      margin: 6px 0;
+      margin: 6px 0 12px 0;
       width: 100%;
       box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 15px;
+      transition: border-color 0.3s ease;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #2980b9;
+      outline: none;
+    }
+    button {
+      background-color: #2980b9;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #1c5980;
     }
     .doc {
+      background: white;
       border: 1px solid #ccc;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .error {
+      color: #e74c3c;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .success {
+      color: #27ae60;
+      font-size: 15px;
+      margin-bottom: 12px;
+    }
+    #docs {
+      margin-top: 30px;
+    }
+    #checkSection {
+      background: #fff;
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      margin-top: 40px;
+    }
+    #checkResult {
+      margin-top: 12px;
       padding: 10px;
-      margin-bottom: 10px;
+      border-radius: 4px;
+      background: #ecf0f1;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    label {
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: block;
+      color: #34495e;
     }
   </style>
 </head>
 <body>
+
   <h1>Добро пожаловать в регистрацию правовых актов</h1>
 
   <div id="formSection">
-    <input type="text" id="discordNick" placeholder="Ник в Discord" />
-    <input type="text" id="fio" placeholder="ФИО (3 слова)" />
-    <select id="department">
+    <label for="fio">ФИО (3 слова)</label>
+    <input type="text" id="fio" placeholder="Иванов Иван Иванович" />
+
+    <label for="fraction">Фракция</label>
+    <select id="fraction">
+      <option value="">Выберите фракцию</option>
       <option value="Министерство внутренних дел">Министерство внутренних дел</option>
       <option value="ФСБ">ФСБ</option>
       <option value="Правительство">Правительство</option>
-      <option value="Своя фракция">Своя фракция</option>
     </select>
-    <input type="text" id="customDept" placeholder="Если своя фракция, укажите здесь" />
+
+    <label for="docType">Тип документа</label>
     <select id="docType">
+      <option value="">Выберите тип документа</option>
       <option value="Указ">Указ</option>
       <option value="Постановление">Постановление</option>
+      <option value="Распоряжение">Распоряжение</option>
       <option value="Приказ">Приказ</option>
     </select>
-    <input type="text" id="docNumber" placeholder="Номер документа" />
+
+    <label for="docNumber">Номер документа (только цифры)</label>
+    <input type="number" id="docNumber" placeholder="123" />
+
+    <label for="title">Название документа</label>
     <input type="text" id="title" placeholder="Название документа" />
-    <textarea id="description" placeholder="Описание (необязательно)"></textarea>
-    <input type="date" id="pubDate" />
+
+    <label for="description">Описание (необязательно)</label>
+    <textarea id="description" placeholder="Описание документа"></textarea>
+
+    <label for="fileInput">Выберите файл</label>
     <input type="file" id="fileInput" />
+
+    <div id="errorBox" class="error"></div>
     <button id="submitBtn">Отправить документ</button>
   </div>
 
   <div id="docs"></div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, query, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
+  <div id="checkSection">
+    <h2>Проверить спецкод документа</h2>
+    <input type="text" id="checkCodeInput" placeholder="Введите спецкод (например ACT-20250627-AB12CD)" />
+    <button id="checkBtn">Проверить</button>
+    <div id="checkResult"></div>
+  </div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBJX1aiBnBg_dVQ_AOA5L3rsvQyLgIb27E",
-      authDomain: "legal-acts-portal.firebaseapp.com",
-      projectId: "legal-acts-portal",
-      storageBucket: "legal-acts-portal.appspot.com",
-      messagingSenderId: "969951897920",
-      appId: "1:969951897920:web:3e35b87565cfcc9e0832a5"
-    };
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    // Массив для хранения документов в памяти (при перезагрузке исчезают)
+    const documents = [];
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
+    function generateUniqueCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      return `ACT-${today}-${result}`;
+    }
 
-    const discordNick = document.getElementById('discordNick');
     const fio = document.getElementById('fio');
-    const department = document.getElementById('department');
-    const customDept = document.getElementById('customDept');
+    const fraction = document.getElementById('fraction');
     const docType = document.getElementById('docType');
     const docNumber = document.getElementById('docNumber');
     const title = document.getElementById('title');
     const description = document.getElementById('description');
-    const pubDate = document.getElementById('pubDate');
     const fileInput = document.getElementById('fileInput');
     const submitBtn = document.getElementById('submitBtn');
+    const errorBox = document.getElementById('errorBox');
     const docsDiv = document.getElementById('docs');
 
-    submitBtn.onclick = async () => {
+    const checkCodeInput = document.getElementById('checkCodeInput');
+    const checkBtn = document.getElementById('checkBtn');
+    const checkResult = document.getElementById('checkResult');
+
+    submitBtn.onclick = () => {
+      errorBox.textContent = '';
+      checkResult.textContent = '';
       const fioVal = fio.value.trim();
       if (fioVal.split(' ').length !== 3) {
-        alert('ФИО должно содержать 3 слова');
+        errorBox.textContent = 'ФИО должно содержать ровно 3 слова';
+        return;
+      }
+      if (!fraction.value) {
+        errorBox.textContent = 'Выберите фракцию';
+        return;
+      }
+      if (!docType.value) {
+        errorBox.textContent = 'Выберите тип документа';
+        return;
+      }
+      if (!docNumber.value.match(/^\d+$/)) {
+        errorBox.textContent = 'Номер документа должен содержать только цифры';
         return;
       }
       if (!fileInput.files.length) {
-        alert('Выберите файл');
-        return;
-      }
-      const dept = department.value === 'Своя фракция' ? customDept.value.trim() : department.value;
-      if (!dept) {
-        alert('Укажите фракцию');
+        errorBox.textContent = 'Выберите файл';
         return;
       }
 
       const file = fileInput.files[0];
-      const filePath = `documents/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, filePath);
+      const uniqueCode = generateUniqueCode();
 
-      try {
-        await uploadBytes(storageRef, file);
-        const fileURL = await getDownloadURL(storageRef);
+      // Создаем объект документа
+      const docObj = {
+        fio: fioVal,
+        fraction: fraction.value,
+        docType: docType.value,
+        docNumber: docNumber.value,
+        title: title.value || docType.value,
+        description: description.value || '—',
+        fileName: file.name,
+        uniqueCode,
+        createdAt: new Date().toLocaleString()
+      };
 
-        const docRef = await addDoc(collection(db, 'documents'), {
-          discordNick: discordNick.value.trim(),
-          fio: fioVal,
-          department: dept,
-          docType: docType.value,
-          docNumber: docNumber.value.trim(),
-          title: title.value.trim(),
-          description: description.value.trim(),
-          pubDate: pubDate.value,
-          fileName: file.name,
-          fileURL,
-          createdAt: new Date()
-        });
+      documents.push(docObj);
 
-        alert('Документ успешно отправлен!');
-        loadDocuments();
+      // Выводим на экран
+      const div = document.createElement('div');
+      div.className = 'doc';
+      const qrId = `qr_${Date.now()}`;
+      div.innerHTML = `
+        <strong>${docObj.title}</strong><br>
+        ФИО: ${docObj.fio}<br>
+        Фракция: ${docObj.fraction}<br>
+        Тип: ${docObj.docType}<br>
+        Номер: ${docObj.docNumber}<br>
+        Описание: ${docObj.description}<br>
+        Файл: ${docObj.fileName}<br>
+        СпецКод: <strong>${docObj.uniqueCode}</strong><br>
+        <small>Вставьте этот код в ваш указ/распоряжение.</small><br>
+        <div id="${qrId}"></div>
+      `;
+      docsDiv.prepend(div);
 
-        // Очистим форму
-        discordNick.value = '';
-        fio.value = '';
-        department.value = 'Министерство внутренних дел';
-        customDept.value = '';
-        docType.value = 'Указ';
-        docNumber.value = '';
-        title.value = '';
-        description.value = '';
-        pubDate.value = '';
-        fileInput.value = '';
+      new QRCode(document.getElementById(qrId), {
+        text: JSON.stringify(docObj, null, 2),
+        width: 128,
+        height: 128,
+        colorDark : "#000000",
+        colorLight : "#ffffff"
+      });
 
-      } catch (e) {
-        alert('Ошибка загрузки: ' + e.message);
-      }
+      // Очистка формы
+      fio.value = '';
+      fraction.value = '';
+      docType.value = '';
+      docNumber.value = '';
+      title.value = '';
+      description.value = '';
+      fileInput.value = '';
+      errorBox.textContent = '';
     };
 
-    async function loadDocuments() {
-      docsDiv.innerHTML = '<h2>Документы</h2>';
-      const q = query(collection(db, 'documents'));
-      const snapshot = await getDocs(q);
-
-      snapshot.forEach(docSnap => {
-        const d = docSnap.data();
-        const div = document.createElement('div');
-        div.className = 'doc';
-        div.innerHTML = `
-          <strong>${d.title || d.docType}</strong><br>
-          ФИО: ${d.fio}<br>
-          Фракция: ${d.department}<br>
-          Номер: ${d.docNumber}<br>
-          Описание: ${d.description || '—'}<br>
-          Дата публикации: ${d.pubDate || '—'}<br>
-          <a href="${d.fileURL}" target="_blank" rel="noopener noreferrer">Открыть файл</a><br>
-          <div id="qrcode-${docSnap.id}"></div>
-        `;
-        docsDiv.appendChild(div);
-
-        const qrInfo = `ФИО: ${d.fio} | Фракция: ${d.department} | Документ: ${d.title} | Номер: ${d.docNumber} | Ссылка: ${d.fileURL}`;
-        new QRCode(document.getElementById(`qrcode-${docSnap.id}`), {
-          text: qrInfo,
-          width: 100,
-          height: 100,
-          colorDark : "#000000",
-          colorLight : "#ffffff",
-        });
-      });
-    }
-
-    loadDocuments();
+    checkBtn.onclick = () => {
+      const codeToCheck = checkCodeInput.value.trim();
+      if (!codeToCheck) {
+        checkResult.textContent = 'Введите спецкод для проверки';
+        checkResult.style.color = '#e74c3c';
+        return;
+      }
+      const foundDoc = documents.find(d => d.uniqueCode === codeToCheck);
+      if (foundDoc) {
+        checkResult.style.color = '#27ae60';
+        checkResult.textContent = `Документ найден:\n
+ФИО: ${foundDoc.fio}
+Фракция: ${foundDoc.fraction}
+Тип: ${foundDoc.docType}
+Номер: ${foundDoc.docNumber}
+Название: ${foundDoc.title}
+Описание: ${foundDoc.description}
+Файл: ${foundDoc.fileName}
+Дата создания: ${foundDoc.createdAt}
+СпецКод: ${foundDoc.uniqueCode}`;
+      } else {
+        checkResult.style.color = '#e74c3c';
+        checkResult.textContent = 'Документ с таким спецкодом не найден.';
+      }
+    };
   </script>
 </body>
 </html>
