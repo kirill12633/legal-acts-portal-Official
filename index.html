@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Регистрация правовых актов</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -9,61 +9,62 @@
       max-width: 700px;
       margin: 30px auto;
       font-family: Arial, sans-serif;
-      padding: 0 15px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
     }
     input, button, select, textarea {
-      padding: 8px;
-      margin: 6px 0;
+      padding: 10px;
+      margin: 8px 0;
       width: 100%;
       box-sizing: border-box;
+      border-radius: 6px;
+      border: 1px solid #ccc;
       font-size: 16px;
     }
     button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
       cursor: pointer;
     }
+    button:hover {
+      background-color: #45a049;
+    }
     .doc {
+      background: #fff;
       border: 1px solid #ccc;
-      padding: 10px;
+      border-radius: 6px;
+      padding: 15px;
       margin-bottom: 15px;
-      border-radius: 4px;
-      background: #f9f9f9;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
     .error {
       color: red;
       font-size: 14px;
-      margin-bottom: 10px;
     }
-    hr {
-      margin: 40px 0 20px 0;
-      border: none;
-      border-top: 1px solid #ddd;
+    .copy-btn {
+      margin-top: 5px;
+      background-color: #2196F3;
     }
-    h1, h2 {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    #checkCodeResult {
-      font-weight: 600;
-      margin-top: 15px;
+    .copy-btn:hover {
+      background-color: #0b7dda;
     }
   </style>
 </head>
 <body>
-
   <h1>Добро пожаловать в регистрацию правовых актов</h1>
 
   <div id="formSection">
-    <div id="errorBox" class="error"></div>
-
     <input type="text" id="fio" placeholder="ФИО (3 слова)" />
-    
     <select id="fraction">
       <option value="">Выберите фракцию</option>
       <option value="Министерство внутренних дел">Министерство внутренних дел</option>
       <option value="ФСБ">ФСБ</option>
       <option value="Правительство">Правительство</option>
     </select>
-    
     <select id="docType">
       <option value="">Выберите тип документа</option>
       <option value="Указ">Указ</option>
@@ -71,33 +72,69 @@
       <option value="Распоряжение">Распоряжение</option>
       <option value="Приказ">Приказ</option>
     </select>
-    
     <input type="number" id="docNumber" placeholder="Номер документа (только цифры)" />
-    
     <input type="text" id="title" placeholder="Название документа" />
-    
-    <textarea id="description" placeholder="Описание (необязательно)" rows="4"></textarea>
-    
+    <textarea id="description" placeholder="Описание (необязательно)"></textarea>
     <input type="file" id="fileInput" />
-    
     <button id="submitBtn">Отправить документ</button>
+    <div id="errorBox" class="error"></div>
   </div>
 
-  <hr />
-
-  <h2>Проверка спецкода</h2>
-  <input type="text" id="checkCodeInput" placeholder="Введите спецкод" />
-  <button id="checkCodeBtn">Проверить код</button>
-  <div id="checkCodeResult"></div>
-
-  <hr />
-
-  <h2>Зарегистрированные документы</h2>
   <div id="docs"></div>
 
   <script>
-    const STORAGE_KEY = 'legalActsDocs';
-    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    function generateUniqueCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      return `ACT-${today}-${result}`;
+    }
+
+    function saveDocuments(docs) {
+      localStorage.setItem('documents', JSON.stringify(docs));
+    }
+
+    function loadDocuments() {
+      const data = localStorage.getItem('documents');
+      return data ? JSON.parse(data) : [];
+    }
+
+    function renderDocuments(docs) {
+      docsDiv.innerHTML = '';
+      docs.forEach(doc => {
+        const div = document.createElement('div');
+        div.className = 'doc';
+        const qrId = `qr_${Date.now()}_${Math.random()}`;
+        div.innerHTML = `
+          <strong>${doc.title || doc.docType}</strong><br>
+          ФИО: ${doc.fio}<br>
+          Фракция: ${doc.fraction}<br>
+          Тип: ${doc.docType}<br>
+          Номер: ${doc.docNumber}<br>
+          Описание: ${doc.description || '—'}<br>
+          Файл: ${doc.fileName}<br>
+          СпецКод: <strong id="code_${qrId}">${doc.uniqueCode}</strong><br>
+          <button class="copy-btn" onclick="copyCode('code_${qrId}')">Скопировать код</button><br>
+          <div id="${qrId}"></div>
+        `;
+        docsDiv.prepend(div);
+        new QRCode(document.getElementById(qrId), {
+          text: doc.qrText,
+          width: 128,
+          height: 128,
+          colorDark: "#000",
+          colorLight: "#fff"
+        });
+      });
+    }
+
+    function copyCode(id) {
+      const el = document.getElementById(id);
+      navigator.clipboard.writeText(el.textContent).then(() => alert("Скопировано!"));
+    }
 
     const fio = document.getElementById('fio');
     const fraction = document.getElementById('fraction');
@@ -110,104 +147,41 @@
     const docsDiv = document.getElementById('docs');
     const errorBox = document.getElementById('errorBox');
 
-    const checkCodeInput = document.getElementById('checkCodeInput');
-    const checkCodeBtn = document.getElementById('checkCodeBtn');
-    const checkCodeResult = document.getElementById('checkCodeResult');
+    let documents = loadDocuments();
+    renderDocuments(documents);
 
-    function generateUniqueCode() {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let result = '';
-      for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      return `ACT-${today}-${result}`;
-    }
-
-    function saveDocs(docs) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
-    }
-
-    function loadDocs() {
-      const json = localStorage.getItem(STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    }
-
-    function displayDoc(docData) {
-      const div = document.createElement('div');
-      div.className = 'doc';
-      const qrId = `qr_${Date.now()}_${Math.random()}`;
-      div.innerHTML = `
-        <strong>${docData.title || docData.docType}</strong><br>
-        ФИО: ${docData.fio}<br>
-        Фракция: ${docData.fraction}<br>
-        Тип: ${docData.docType}<br>
-        Номер: ${docData.docNumber}<br>
-        Описание: ${docData.description || '—'}<br>
-        Файл: ${docData.fileName}<br>
-        СпецКод: <strong>${docData.uniqueCode}</strong><br>
-        <div id="${qrId}"></div>
-      `;
-      docsDiv.prepend(div);
-      new QRCode(document.getElementById(qrId), {
-        text: JSON.stringify(docData, null, 2),
-        width: 128,
-        height: 128
-      });
-    }
-
-    window.onload = () => {
-      const docs = loadDocs();
-      docs.forEach(displayDoc);
-    };
-
-    submitBtn.onclick = async () => {
+    submitBtn.onclick = () => {
       errorBox.textContent = '';
-      if (fio.value.trim().split(' ').length !== 3) {
-        errorBox.textContent = 'ФИО должно содержать ровно 3 слова'; return;
-      }
+      const fioVal = fio.value.trim();
+      if (fioVal.split(' ').length !== 3) {
+        errorBox.textContent = 'ФИО должно содержать ровно 3 слова'; return; }
       if (!fraction.value) { errorBox.textContent = 'Выберите фракцию'; return; }
       if (!docType.value) { errorBox.textContent = 'Выберите тип документа'; return; }
-      if (!/^\d+$/.test(docNumber.value)) {
-        errorBox.textContent = 'Номер должен быть только цифрами'; return;
-      }
+      if (!docNumber.value.match(/^\d+$/)) {
+        errorBox.textContent = 'Номер документа должен содержать только цифры'; return; }
       if (!fileInput.files.length) {
-        errorBox.textContent = 'Выберите файл'; return;
-      }
+        errorBox.textContent = 'Выберите файл'; return; }
 
+      const file = fileInput.files[0];
       const uniqueCode = generateUniqueCode();
-      const docData = {
-        fio: fio.value.trim(),
+      const info = `ФИО: ${fioVal}\nФракция: ${fraction.value}\nТип: ${docType.value}\nНомер: ${docNumber.value}\nНазвание: ${title.value}\nОписание: ${description.value}\nСпецКод: ${uniqueCode}`;
+
+      const newDoc = {
+        fio: fioVal,
         fraction: fraction.value,
         docType: docType.value,
-        docNumber: docNumber.value.trim(),
-        title: title.value.trim(),
-        description: description.value.trim(),
-        fileName: fileInput.files[0].name,
-        uniqueCode
+        docNumber: docNumber.value,
+        title: title.value,
+        description: description.value,
+        fileName: file.name,
+        uniqueCode,
+        qrText: info
       };
 
-      const docs = loadDocs();
-      docs.push(docData);
-      saveDocs(docs);
-      displayDoc(docData);
-    };
-
-    checkCodeBtn.onclick = async () => {
-      checkCodeResult.textContent = '';
-      await delay(1000); // задержка 1 сек
-      const code = checkCodeInput.value.trim();
-      const docs = loadDocs();
-      const found = docs.find(d => d.uniqueCode === code);
-      if (found) {
-        checkCodeResult.style.color = 'green';
-        checkCodeResult.innerHTML = `Документ найден: <strong>${found.title}</strong>`;
-      } else {
-        checkCodeResult.style.color = 'red';
-        checkCodeResult.innerText = 'Документ не найден или не сохранён. Повторите позже.';
-      }
+      documents.push(newDoc);
+      saveDocuments(documents);
+      renderDocuments(documents);
     };
   </script>
-
 </body>
 </html>
