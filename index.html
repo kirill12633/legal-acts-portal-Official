@@ -2,139 +2,99 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Регистрация правовых актов</title>
+  <title>Генератор QR кода документа</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    body { max-width: 700px; margin: 30px auto; font-family: Arial, sans-serif; }
-    input, select, textarea, button { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
-    .doc { border: 1px solid #ccc; padding: 12px; margin-bottom: 12px; position: relative; }
-    .qr-code { position: absolute; right: 10px; top: 10px; }
+    body {
+      max-width: 600px;
+      margin: 40px auto;
+      font-family: Arial, sans-serif;
+      padding: 0 10px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    #qrcode {
+      margin-top: 20px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+  <h1>Генератор QR-кода документа</h1>
 
-<h1>Добро пожаловать в регистрацию правовых актов</h1>
-
-<div>
-  <input id="discordNick" placeholder="Ник в Discord*" />
-  <input id="fio" placeholder="ФИО (3 слова)*" />
-  <select id="department">
-    <option value="" disabled selected>Выберите отдел</option>
-    <option value="Министерство обороны">Министерство обороны</option>
-    <option value="Министерство финансов">Министерство финансов</option>
+  <input type="text" id="fio" placeholder="ФИО (3 слова)" />
+  
+  <select id="faction">
+    <option value="">Выберите фракцию</option>
+    <option value="Министерство внутренних дел">Министерство внутренних дел</option>
     <option value="ФСБ">ФСБ</option>
-    <option value="Другое">Свой вариант</option>
+    <option value="Правительство">Правительство</option>
+    <option value="Министерство обороны">Министерство обороны</option>
   </select>
-  <input id="customDept" placeholder="Если своё — укажите отдел" />
+
   <select id="docType">
-    <option value="" disabled selected>Тип документа*</option>
+    <option value="">Выберите вид документа</option>
     <option value="Указ">Указ</option>
     <option value="Постановление">Постановление</option>
     <option value="Приказ">Приказ</option>
-    <option value="Распоряжение">Распоряжение</option>
   </select>
-  <input id="docNumber" placeholder="Номер документа*" />
-  <input id="title" placeholder="Название документа*" />
+
+  <input type="text" id="title" placeholder="Название документа" />
   <textarea id="description" placeholder="Описание (необязательно)"></textarea>
-  <input id="pubDate" type="date" />
-  <input id="fileInput" type="file" />
-  <button id="submitBtn">Отправить документ</button>
-</div>
+  
+  <button id="generateBtn">Сгенерировать QR код</button>
 
-<hr/>
+  <div id="qrcode"></div>
 
-<div id="docs"></div>
+  <script>
+    const generateBtn = document.getElementById('generateBtn');
+    const qrcodeDiv = document.getElementById('qrcode');
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
+    generateBtn.onclick = () => {
+      const fio = document.getElementById('fio').value.trim();
+      const faction = document.getElementById('faction').value;
+      const docType = document.getElementById('docType').value;
+      const title = document.getElementById('title').value.trim();
+      const description = document.getElementById('description').value.trim();
 
-  const firebaseConfig = { /* твоя конфигурация Firebase */ };
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const storage = getStorage(app);
+      // Проверка ФИО на 3 слова
+      if (fio.split(' ').length !== 3) {
+        alert('ФИО должно содержать ровно 3 слова');
+        return;
+      }
+      if (!faction) {
+        alert('Выберите фракцию');
+        return;
+      }
+      if (!docType) {
+        alert('Выберите вид документа');
+        return;
+      }
+      if (!title) {
+        alert('Введите название документа');
+        return;
+      }
 
-  const discordNick = document.getElementById('discordNick');
-  const fio = document.getElementById('fio');
-  const department = document.getElementById('department');
-  const customDept = document.getElementById('customDept');
-  const docType = document.getElementById('docType');
-  const docNumber = document.getElementById('docNumber');
-  const title = document.getElementById('title');
-  const description = document.getElementById('description');
-  const pubDate = document.getElementById('pubDate');
-  const fileInput = document.getElementById('fileInput');
-  const submitBtn = document.getElementById('submitBtn');
-  const docsDiv = document.getElementById('docs');
+      const qrText = `
+ФИО: ${fio}
+Фракция: ${faction}
+Вид документа: ${docType}
+Название: ${title}
+Описание: ${description || '—'}
+`.trim();
 
-  submitBtn.onclick = async () => {
-    // Проверки
-    if (!discordNick.value.trim() || fio.value.trim().split(' ').length !== 3 ||
-        !department.value || !docType.value || !docNumber.value.trim() ||
-        !title.value.trim() || !fileInput.files.length) {
-      return alert('Пожалуйста, заполните все обязательные поля корректно.');
-    }
-    let dept = department.value;
-    if (dept === 'Другое') {
-      dept = customDept.value.trim();
-      if (!dept) return alert('Укажите свой отдел.');
-    }
-
-    const file = fileInput.files[0];
-    const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    const fileURL = await getDownloadURL(storageRef);
-
-    await addDoc(collection(db, 'documents'), {
-      discordNick: discordNick.value.trim(),
-      fio: fio.value.trim(),
-      department: dept,
-      docType: docType.value,
-      docNumber: docNumber.value.trim(),
-      title: title.value.trim(),
-      description: description.value.trim(),
-      pubDate: pubDate.value,
-      fileName: file.name,
-      fileURL,
-      createdAt: new Date()
-    });
-
-    alert('Документ отправлен!');
-    clearForm();
-    loadDocuments();
-  };
-
-  function clearForm() {
-    discordNick.value = fio.value = docNumber.value = title.value = description.value = customDept.value = '';
-    department.value = docType.value = pubDate.value = '';
-    fileInput.value = '';
-  }
-
-  async function loadDocuments() {
-    docsDiv.innerHTML = '';
-    const snapshot = await getDocs(query(collection(db, 'documents'), orderBy('createdAt', 'desc')));
-    snapshot.forEach(docSnap => {
-      const d = docSnap.data();
-      const div = document.createElement('div');
-      div.className = 'doc';
-      div.innerHTML = `
-        <strong>${d.docType} №${d.docNumber} — ${d.title}</strong><br>
-        Discord: ${d.discordNick}<br>
-        ФИО: ${d.fio}<br>
-        Отдел: ${d.department}<br>
-        Описание: ${d.description || '—'}<br>
-        Дата публикации: ${d.pubDate || '—'}<br>
-        <a href="${d.fileURL}" target="_blank">Открыть файл (${d.fileName})</a>
-        <div id="qr-${docSnap.id}" class="qr-code"></div>
-      `;
-      docsDiv.appendChild(div);
-      const info = `ФИО: ${d.fio}\nОтдел: ${d.department}\nДокумент: ${d.title}\nНомер: ${d.docNumber}\nURL: ${d.fileURL}`;
-      new QRCode(document.getElementById(`qr-${docSnap.id}`), { text: info, width: 100, height: 100 });
-    });
-  }
-
-  loadDocuments();
-</script>
+      qrcodeDiv.innerHTML = ''; // очистить старый QR
+      new QRCode(qrcodeDiv, {
+        text: qrText,
+        width: 200,
+        height: 200,
+      });
+    };
+  </script>
 </body>
 </html>
