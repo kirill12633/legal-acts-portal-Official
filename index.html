@@ -86,7 +86,7 @@
   <hr />
 
   <h2>Проверка спецкода</h2>
-  <input type="text" id="checkCodeInput" placeholder="Введите спецкод, например ACT-20250627-ABC123" />
+  <input type="text" id="checkCodeInput" placeholder="Введите спецкод" />
   <button id="checkCodeBtn">Проверить код</button>
   <div id="checkCodeResult"></div>
 
@@ -95,8 +95,10 @@
   <h2>Зарегистрированные документы</h2>
   <div id="docs"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
+    const STORAGE_KEY = 'legalActsDocs';
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
     const fio = document.getElementById('fio');
     const fraction = document.getElementById('fraction');
     const docType = document.getElementById('docType');
@@ -112,35 +114,6 @@
     const checkCodeBtn = document.getElementById('checkCodeBtn');
     const checkCodeResult = document.getElementById('checkCodeResult');
 
-    // Ключ в LocalStorage
-    const STORAGE_KEY = 'legalActsDocs';
-
-    // Загрузка документов из LocalStorage
-    function loadDocs() {
-      const json = localStorage.getItem(STORAGE_KEY);
-      if (!json) return [];
-      try {
-        return JSON.parse(json);
-      } catch {
-        return [];
-      }
-    }
-
-    // Сохранение документов в LocalStorage
-    function saveDocs(docs) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
-    }
-
-    // Список документов в памяти
-    let addedDocs = loadDocs();
-
-    // Показываем документы из LocalStorage при загрузке страницы
-    window.onload = () => {
-      addedDocs.forEach(doc => {
-        createDocumentElement(doc);
-      });
-    };
-
     function generateUniqueCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       let result = '';
@@ -151,56 +124,19 @@
       return `ACT-${today}-${result}`;
     }
 
-    function clearForm() {
-      fio.value = '';
-      fraction.value = '';
-      docType.value = '';
-      docNumber.value = '';
-      title.value = '';
-      description.value = '';
-      fileInput.value = '';
-      errorBox.textContent = '';
+    function saveDocs(docs) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
     }
 
-    function validate() {
-      errorBox.textContent = '';
-      if (fio.value.trim().split(' ').length !== 3) {
-        errorBox.textContent = 'ФИО должно содержать ровно 3 слова';
-        return false;
-      }
-      if (!fraction.value) {
-        errorBox.textContent = 'Выберите фракцию';
-        return false;
-      }
-      if (!docType.value) {
-        errorBox.textContent = 'Выберите тип документа';
-        return false;
-      }
-      if (!docNumber.value.match(/^\d+$/)) {
-        errorBox.textContent = 'Номер документа должен содержать только цифры';
-        return false;
-      }
-      if (!fileInput.files.length) {
-        errorBox.textContent = 'Выберите файл';
-        return false;
-      }
-      return true;
+    function loadDocs() {
+      const json = localStorage.getItem(STORAGE_KEY);
+      return json ? JSON.parse(json) : [];
     }
 
-    function createDocumentElement(docData) {
+    function displayDoc(docData) {
       const div = document.createElement('div');
       div.className = 'doc';
-      const qrId = `qr_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-      const infoForQR = 
-        `ФИО: ${docData.fio}\n` +
-        `Фракция: ${docData.fraction}\n` +
-        `Тип: ${docData.docType}\n` +
-        `Номер: ${docData.docNumber}\n` +
-        `Название: ${docData.title}\n` +
-        `Описание: ${docData.description || '—'}\n` +
-        `СпецКод: ${docData.uniqueCode}`;
-
+      const qrId = `qr_${Date.now()}_${Math.random()}`;
       div.innerHTML = `
         <strong>${docData.title || docData.docType}</strong><br>
         ФИО: ${docData.fio}<br>
@@ -210,26 +146,36 @@
         Описание: ${docData.description || '—'}<br>
         Файл: ${docData.fileName}<br>
         СпецКод: <strong>${docData.uniqueCode}</strong><br>
-        <small>Вставьте этот код в ваш указ/распоряжение: <em>${docData.uniqueCode}</em></small><br>
         <div id="${qrId}"></div>
       `;
-
       docsDiv.prepend(div);
       new QRCode(document.getElementById(qrId), {
-        text: infoForQR,
+        text: JSON.stringify(docData, null, 2),
         width: 128,
-        height: 128,
-        colorDark : "#000000",
-        colorLight : "#ffffff"
+        height: 128
       });
     }
 
-    submitBtn.onclick = () => {
-      if (!validate()) return;
+    window.onload = () => {
+      const docs = loadDocs();
+      docs.forEach(displayDoc);
+    };
 
-      const file = fileInput.files[0];
+    submitBtn.onclick = async () => {
+      errorBox.textContent = '';
+      if (fio.value.trim().split(' ').length !== 3) {
+        errorBox.textContent = 'ФИО должно содержать ровно 3 слова'; return;
+      }
+      if (!fraction.value) { errorBox.textContent = 'Выберите фракцию'; return; }
+      if (!docType.value) { errorBox.textContent = 'Выберите тип документа'; return; }
+      if (!/^\d+$/.test(docNumber.value)) {
+        errorBox.textContent = 'Номер должен быть только цифрами'; return;
+      }
+      if (!fileInput.files.length) {
+        errorBox.textContent = 'Выберите файл'; return;
+      }
+
       const uniqueCode = generateUniqueCode();
-
       const docData = {
         fio: fio.value.trim(),
         fraction: fraction.value,
@@ -237,40 +183,28 @@
         docNumber: docNumber.value.trim(),
         title: title.value.trim(),
         description: description.value.trim(),
-        fileName: file.name,
+        fileName: fileInput.files[0].name,
         uniqueCode
       };
 
-      addedDocs.push(docData);
-      saveDocs(addedDocs);
-      createDocumentElement(docData);
-      clearForm();
+      const docs = loadDocs();
+      docs.push(docData);
+      saveDocs(docs);
+      displayDoc(docData);
     };
 
-    checkCodeBtn.onclick = () => {
+    checkCodeBtn.onclick = async () => {
+      checkCodeResult.textContent = '';
+      await delay(1000); // задержка 1 сек
       const code = checkCodeInput.value.trim();
-      if (!code) {
-        checkCodeResult.style.color = 'red';
-        checkCodeResult.textContent = 'Введите спецкод для проверки.';
-        return;
-      }
-
-      const found = addedDocs.find(doc => doc.uniqueCode === code);
+      const docs = loadDocs();
+      const found = docs.find(d => d.uniqueCode === code);
       if (found) {
         checkCodeResult.style.color = 'green';
-        checkCodeResult.innerHTML = `
-          Документ найден:<br>
-          <strong>${found.title || found.docType}</strong><br>
-          ФИО: ${found.fio}<br>
-          Фракция: ${found.fraction}<br>
-          Тип: ${found.docType}<br>
-          Номер: ${found.docNumber}<br>
-          Описание: ${found.description || '—'}<br>
-          Файл: ${found.fileName}
-        `;
+        checkCodeResult.innerHTML = `Документ найден: <strong>${found.title}</strong>`;
       } else {
         checkCodeResult.style.color = 'red';
-        checkCodeResult.textContent = 'Документ с таким спецкодом не найден.';
+        checkCodeResult.innerText = 'Документ не найден или не сохранён. Повторите позже.';
       }
     };
   </script>
