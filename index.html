@@ -112,8 +112,34 @@
     const checkCodeBtn = document.getElementById('checkCodeBtn');
     const checkCodeResult = document.getElementById('checkCodeResult');
 
-    // Массив для хранения добавленных документов
-    const addedDocs = [];
+    // Ключ в LocalStorage
+    const STORAGE_KEY = 'legalActsDocs';
+
+    // Загрузка документов из LocalStorage
+    function loadDocs() {
+      const json = localStorage.getItem(STORAGE_KEY);
+      if (!json) return [];
+      try {
+        return JSON.parse(json);
+      } catch {
+        return [];
+      }
+    }
+
+    // Сохранение документов в LocalStorage
+    function saveDocs(docs) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
+    }
+
+    // Список документов в памяти
+    let addedDocs = loadDocs();
+
+    // Показываем документы из LocalStorage при загрузке страницы
+    window.onload = () => {
+      addedDocs.forEach(doc => {
+        createDocumentElement(doc);
+      });
+    };
 
     function generateUniqueCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -216,23 +242,25 @@
       };
 
       addedDocs.push(docData);
+      saveDocs(addedDocs);
       createDocumentElement(docData);
       clearForm();
     };
 
     checkCodeBtn.onclick = () => {
-      const codeToCheck = checkCodeInput.value.trim();
-      if (!codeToCheck) {
+      const code = checkCodeInput.value.trim();
+      if (!code) {
         checkCodeResult.style.color = 'red';
         checkCodeResult.textContent = 'Введите спецкод для проверки.';
         return;
       }
-      const found = addedDocs.find(d => d.uniqueCode === codeToCheck);
+
+      const found = addedDocs.find(doc => doc.uniqueCode === code);
       if (found) {
         checkCodeResult.style.color = 'green';
         checkCodeResult.innerHTML = `
-          Код <strong>${codeToCheck}</strong> найден!<br>
-          Документ: <strong>${found.title || found.docType}</strong><br>
+          Документ найден:<br>
+          <strong>${found.title || found.docType}</strong><br>
           ФИО: ${found.fio}<br>
           Фракция: ${found.fraction}<br>
           Тип: ${found.docType}<br>
@@ -242,7 +270,7 @@
         `;
       } else {
         checkCodeResult.style.color = 'red';
-        checkCodeResult.textContent = `Код ${codeToCheck} не найден.`;
+        checkCodeResult.textContent = 'Документ с таким спецкодом не найден.';
       }
     };
   </script>
